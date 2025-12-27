@@ -46,6 +46,12 @@ main() {
         echo ""
         echo -e "${YELLOW}To uninstall:${NC}"
         echo "   rm $PLUGIN_DIR/telegram-notify.js"
+
+        # Send installation notification
+        curl -sS -X POST "$WORKER_URL/notify" \
+            -H "Content-Type: application/json" \
+            -d "{\"key\": \"$install_key\", \"message\": \"✅ OpenCode Telegram Notification Plugin installed successfully!\"}" \
+            > /dev/null 2>&1 || true
     else
         echo -e "${RED}Installation failed${NC}"
         exit 1
