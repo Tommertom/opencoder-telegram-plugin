@@ -13,7 +13,7 @@ bot.post("/webhook", zValidator("json", telegramUpdateSchema), async (c) => {
   const update = c.req.valid("json");
   const chatId = update.message?.chat?.id;
   const text = update.message?.text?.trim();
-  const firstName = update.message?.from?.first_name || "there";
+  const firstName = update.message?.from?.first_name || "N/A";
 
   if (!chatId) {
     return c.text("OK");

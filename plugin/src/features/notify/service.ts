@@ -1,7 +1,6 @@
 import { INSTALL_KEY, WORKER_URL } from "../../lib/config";
 import type { Logger } from "../../lib/logger";
 import type { OpencodeClient } from "../../lib/types";
-import { calculateDurationSeconds } from "../../lib/utils";
 import { getSessionInfo } from "../session/service";
 import type { NotifyPayload } from "./types";
 
@@ -21,18 +20,8 @@ export async function sendNotification(
       project: projectName,
     };
 
-    if (sessionInfo) {
-      if (sessionInfo.title) {
-        payload.sessionTitle = sessionInfo.title;
-      }
-
-      const durationSeconds = calculateDurationSeconds(
-        sessionInfo.time?.created,
-        sessionInfo.time?.updated,
-      );
-      if (durationSeconds !== null) {
-        payload.durationSeconds = durationSeconds;
-      }
+    if (sessionInfo?.title) {
+      payload.sessionTitle = sessionInfo.title;
     }
 
     logger.debug("Sending payload", { payload });

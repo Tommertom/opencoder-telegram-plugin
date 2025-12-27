@@ -4,7 +4,7 @@ Get notified on Telegram when your OpenCode sessions complete.
 
 ## Installation
 
-1. Start a chat with [@opencode_notify_bot](https://t.me/opencodetelegramnotificationbot)
+1. Start a chat with [@opencodetelegramnotificationbot](https://t.me/opencodetelegramnotificationbot)
 2. Send `/start`
 3. Run the command the bot sends you
 4. Done!
@@ -20,8 +20,8 @@ Get notified on Telegram when your OpenCode sessions complete.
 
 ## How It Works
 
-1. The bot generates a unique install key for you
-2. The install script configures the plugin with your key
+1. The bot generates a unique installation key for you
+2. The installation script configures the plugin with your key
 3. When OpenCode finishes a task, the plugin notifies the bot
 4. The bot sends you a Telegram message
 
@@ -101,18 +101,3 @@ After deployment, set the Telegram webhook:
 ```bash
 curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=https://opencode-telegram-bot.<subdomain>.workers.dev/webhook"
 ```
-
-## Environment Variables
-
-Copy `.env.example` to `.env.local` and fill in the required values:
-
-| Variable | Description |
-|----------|-------------|
-| `BOT_TOKEN` | Telegram bot token from @BotFather |
-| `KV_NAMESPACE_ID` | Cloudflare KV namespace ID |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
-| `WORKER_URL` | Worker URL (available after first deployment) |
-
-## License
-
-MIT

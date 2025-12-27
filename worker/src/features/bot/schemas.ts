@@ -15,5 +15,3 @@ export const telegramUpdateSchema = z.object({
     })
     .optional(),
 });
-
-export type TelegramUpdate = z.infer<typeof telegramUpdateSchema>;

@@ -11,8 +11,18 @@ export async function handleStart(chatId: number, firstName: string, env: Env): 
     await sendTelegramMessage(
       env.BOT_TOKEN,
       chatId,
-      `Hey ${firstName}! You already have an install key.\n\n*Run this command to install:*\n\`\`\`bash\n${installCommand}\n\`\`\`\n\nUse /revoke to generate a new key if needed.`,
+      `
+Hey ${firstName}! You already have an install key.
+
+*Run this command to install the plugin:*
+\`\`\`bash
+${installCommand}
+\`\`\`
+
+Use /revoke to generate a new key if needed.
+`.trim(),
     );
+
     return;
   }
 

@@ -11,20 +11,6 @@ function isConfigured() {
   return !INSTALL_KEY.startsWith("__") && !WORKER_URL.startsWith("__");
 }
 
-// src/lib/utils.ts
-function extractProjectName(directory) {
-  if (directory) {
-    return directory.split("/").pop() || "Unknown";
-  }
-  return "Unknown";
-}
-function calculateDurationSeconds(createdAt, updatedAt) {
-  if (!createdAt || !updatedAt) {
-    return null;
-  }
-  return Math.round((updatedAt - createdAt) / 1e3);
-}
-
 // src/features/session/service.ts
 async function getSessionById(client, logger, sessionId) {
   const response = await client.session.get({
@@ -74,17 +60,8 @@ async function sendNotification(client, logger, projectName, sessionId) {
       key: INSTALL_KEY,
       project: projectName
     };
-    if (sessionInfo) {
-      if (sessionInfo.title) {
-        payload.sessionTitle = sessionInfo.title;
-      }
-      const durationSeconds = calculateDurationSeconds(
-        sessionInfo.time?.created,
-        sessionInfo.time?.updated
-      );
-      if (durationSeconds !== null) {
-        payload.durationSeconds = durationSeconds;
-      }
+    if (sessionInfo?.title) {
+      payload.sessionTitle = sessionInfo.title;
     }
     logger.debug("Sending payload", { payload });
     const response = await fetch(`${WORKER_URL}/notify`, {
@@ -125,6 +102,14 @@ function createLogger(client) {
     warn: (message, extra) => log(client, "warn", message, extra),
     error: (message, extra) => log(client, "error", message, extra)
   };
+}
+
+// src/lib/utils.ts
+function extractProjectName(directory) {
+  if (directory) {
+    return directory.split("/").pop() || "Unknown";
+  }
+  return "Unknown";
 }
 
 // src/telegram-notify.ts

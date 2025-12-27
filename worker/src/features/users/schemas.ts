@@ -1,8 +1,5 @@
-import { z } from "zod";
-
-export const userDataSchema = z.object({
-  chatId: z.number(),
-  firstName: z.string().optional(),
-});
-
-export type UserData = z.infer<typeof userDataSchema>;
+export interface UserData {
+  chatId: number;
+  firstName?: string;
+  createdAt: number;
+}

@@ -6,5 +6,3 @@ export const notifyRequestSchema = z.object({
   sessionTitle: z.string().optional(),
   message: z.string().optional(),
 });
-
-export type NotifyRequest = z.infer<typeof notifyRequestSchema>;

@@ -1,7 +1,7 @@
 import { SERVICE_NAME } from "./config";
 import type { OpencodeClient } from "./types";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface Logger {
   debug: (message: string, extra?: Record<string, unknown>) => void;

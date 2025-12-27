@@ -17,9 +17,13 @@ export async function findUserKeyByChatId(
 export async function createUser(
   kv: KVNamespace,
   installKey: string,
-  userData: UserData,
+  userData: Omit<UserData, "createdAt">,
 ): Promise<void> {
-  await kv.put(installKey, JSON.stringify(userData));
+  const dataWithTimestamp: UserData = {
+    ...userData,
+    createdAt: Date.now(),
+  };
+  await kv.put(installKey, JSON.stringify(dataWithTimestamp));
 }
 
 export async function deleteUser(kv: KVNamespace, key: string): Promise<void> {
