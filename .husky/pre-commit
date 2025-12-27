@@ -1,0 +1,2 @@
+pnpm format
+pnpm --filter opencode-telegram-notify-plugin build
