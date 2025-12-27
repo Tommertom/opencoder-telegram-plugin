@@ -4,7 +4,7 @@ Get notified on Telegram when your OpenCode sessions complete.
 
 ## Installation
 
-1. Start a chat with [@opencode_notify_bot](https://t.me/opencode_notify_bot)
+1. Start a chat with [@opencode_notify_bot](https://t.me/opencodetelegramnotificationbot)
 2. Send `/start`
 3. Run the command the bot sends you
 4. Done!
