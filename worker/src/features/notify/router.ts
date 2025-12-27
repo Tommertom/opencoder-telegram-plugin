@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { formatDuration } from "../../lib/format-duration";
 import { sendTelegramMessage } from "../../lib/telegram";
 import type { Env } from "../../lib/types";
 import { getUserByKey } from "../users/service";
@@ -7,13 +8,21 @@ import { notifyRequestSchema } from "./schemas";
 
 const notify = new Hono<{ Bindings: Env }>();
 
-function buildNotificationMessage(projectName: string, sessionTitle?: string): string {
+function buildNotificationMessage(
+  projectName: string,
+  sessionTitle?: string,
+  durationMs?: number,
+): string {
   const lines: string[] = [];
 
   lines.push(`📁 \`${projectName}\``);
 
   if (sessionTitle) {
-    lines.push(`📋 "${sessionTitle}"`);
+    lines.push(`📋 \`${sessionTitle}\``);
+  }
+
+  if (durationMs !== undefined) {
+    lines.push(`⏱️${formatDuration(durationMs)}`);
   }
 
   return lines.join("\n");
@@ -36,7 +45,8 @@ notify.post(
     }
 
     const projectName = body.project || "Unknown project";
-    const message = body.message || buildNotificationMessage(projectName, body.sessionTitle);
+    const message =
+      body.message || buildNotificationMessage(projectName, body.sessionTitle, body.durationMs);
 
     const success = await sendTelegramMessage(c.env.BOT_TOKEN, userData.chatId, message);
 

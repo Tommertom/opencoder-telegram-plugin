@@ -14,15 +14,33 @@ function isConfigured() {
 // src/features/session/utils/get-session-info.ts
 async function getSessionInfo(client, logger, sessionId) {
   try {
-    const response = await client.session.get({
+    const session = await client.session.get({
       path: { id: sessionId }
     });
-    if (response.error) {
-      logger.error(`Error getting session: ${JSON.stringify(response.error)}`);
+    if (session.error) {
+      logger.error(`Error getting session: ${JSON.stringify(session.error)}`);
       return null;
     }
-    logger.debug("Session details", { session: response.data });
-    return response.data;
+    const messages = await client.session.messages({ path: { id: sessionId } });
+    if (messages.error) {
+      logger.error(`Error getting session messages: ${JSON.stringify(messages.error)}`);
+      return null;
+    }
+    const lastUserMessage = [...messages.data].reverse().find((msg) => msg.info.role === "user");
+    logger.debug(
+      `Last user message for session ${sessionId}: created=${lastUserMessage?.info.time.created}, completed=${lastUserMessage?.info.role === "assistant" ? lastUserMessage.info.time.completed : void 0}`
+    );
+    logger.debug("Session details", { session: session.data });
+    const lastMessageTime = lastUserMessage?.info.time.created;
+    let durationMs;
+    if (lastMessageTime) {
+      durationMs = Date.now() - lastMessageTime;
+      logger.debug(`Session duration: ${durationMs}ms`);
+    }
+    return {
+      title: session.data.title,
+      durationMs
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const errorStack = error instanceof Error ? error.stack : "";
@@ -39,7 +57,8 @@ async function sendNotification(client, logger, projectName, sessionId) {
     const payload = {
       key: INSTALL_KEY,
       project: projectName,
-      sessionTitle: sessionInfo?.title ?? void 0
+      sessionTitle: sessionInfo?.title,
+      durationMs: sessionInfo?.durationMs
     };
     logger.debug("Sending payload", { payload });
     const response = await fetch(`${WORKER_URL}/notify`, {

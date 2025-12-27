@@ -18,7 +18,8 @@ export async function sendNotification(
     const payload: NotifyPayload = {
       key: INSTALL_KEY,
       project: projectName,
-      sessionTitle: sessionInfo?.title ?? undefined,
+      sessionTitle: sessionInfo?.title,
+      durationMs: sessionInfo?.durationMs,
     };
 
     logger.debug("Sending payload", { payload });
