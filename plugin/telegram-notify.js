@@ -2,8 +2,8 @@ const INSTALL_KEY = "__INSTALL_KEY__";
 const WORKER_URL = "__WORKER_URL__";
 
 export async function TelegramNotify({ project, directory }) {
-  // Validate configuration
-  if (INSTALL_KEY === "__INSTALL_KEY__" || WORKER_URL === "__WORKER_URL__") {
+  // Validate configuration - check if placeholders were not replaced
+  if (INSTALL_KEY.startsWith("__") || WORKER_URL.startsWith("__")) {
     console.error(
       "[TelegramNotify] Plugin not configured. Please replace INSTALL_KEY and WORKER_URL placeholders.",
     );
