@@ -33,6 +33,7 @@ export const TelegramRemote: Plugin = async ({ client }) => {
       logger.error("Failed to get forum topics", { error: String(topicsResponse.error) });
     } else {
       const sessions = sessionsResponse.data || [];
+      console.log(sessions);
       const topics = topicsResponse.topics || [];
 
       // Create a map of topic names to topics for quick lookup

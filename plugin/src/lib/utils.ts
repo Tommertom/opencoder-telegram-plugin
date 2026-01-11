@@ -11,7 +11,7 @@ export async function sendTemporaryMessage(
   bot: Bot,
   chatId: number,
   text: string,
-  durationMs: number = 10000,
+  durationMs: number = 1000,
 ): Promise<void> {
   try {
     const sentMessage = await bot.api.sendMessage(chatId, text);
