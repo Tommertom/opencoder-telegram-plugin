@@ -107,7 +107,7 @@ var MessageTracker = class {
 import { Bot } from "grammy";
 
 // src/lib/utils.ts
-async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e4) {
+async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3) {
   try {
     const sentMessage = await bot.api.sendMessage(chatId, text);
     const messageId = sentMessage.message_id;
@@ -291,6 +291,7 @@ var TelegramRemote = async ({ client }) => {
       logger.error("Failed to get forum topics", { error: String(topicsResponse.error) });
     } else {
       const sessions = sessionsResponse.data || [];
+      console.log(sessions);
       const topics = topicsResponse.topics || [];
       const topicMap = /* @__PURE__ */ new Map();
       for (const topic of topics) {

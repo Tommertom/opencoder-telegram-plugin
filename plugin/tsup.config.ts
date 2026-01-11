@@ -11,4 +11,5 @@ export default defineConfig({
  * https://github.com/YOUR_USERNAME/opencoder-telegram-remote-plugin
  */`,
   },
+  onSuccess: "cp dist/telegram-remote.js ../.opencode/plugin/telegram-remote.js",
 });

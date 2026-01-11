@@ -6,7 +6,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && tsup",
-    "dev": "tsup --watch"
+    "postbuild": "cp dist/telegram-remote.js ../.opencode/plugin/telegram-remote.js",
+    "dev": "tsup --watch",
+    "predev": "npm run build"
   },
   "dependencies": {
     "grammy": "^1.34.0",

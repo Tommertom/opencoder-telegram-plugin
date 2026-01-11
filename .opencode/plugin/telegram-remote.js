@@ -105,6 +105,25 @@ var MessageTracker = class {
 
 // src/bot.ts
 import { Bot } from "grammy";
+
+// src/lib/utils.ts
+async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3) {
+  try {
+    const sentMessage = await bot.api.sendMessage(chatId, text);
+    const messageId = sentMessage.message_id;
+    setTimeout(async () => {
+      try {
+        await bot.api.deleteMessage(chatId, messageId);
+      } catch (error) {
+        console.warn("Failed to delete temporary message", { error: String(error), messageId });
+      }
+    }, durationMs);
+  } catch (error) {
+    console.error("Failed to send temporary message", { error: String(error) });
+  }
+}
+
+// src/bot.ts
 var botInstance = null;
 function isUserAllowed(ctx, allowedUserIds) {
   const userId = ctx.from?.id;
@@ -222,7 +241,7 @@ function createBotManager(bot, config) {
         onStart: async () => {
           console.log("Telegram bot started");
           try {
-            await bot.api.sendMessage(config.groupId, "Messaging enabled");
+            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled");
           } catch (error) {
             console.error("Failed to send startup message", error);
           }
@@ -237,6 +256,12 @@ function createBotManager(bot, config) {
       await bot.api.sendMessage(config.groupId, text, {
         message_thread_id: topicId
       });
+    },
+    async getForumTopics(groupId) {
+      return await bot.api.getForumTopics(groupId);
+    },
+    async createForumTopic(groupId, name) {
+      return await bot.api.createForumTopic(groupId, name);
     }
   };
 }
@@ -257,6 +282,46 @@ var TelegramRemote = async ({ client }) => {
   const sessionStore = new SessionStore();
   const messageTracker = new MessageTracker();
   const bot = createTelegramBot(config, client, logger, sessionStore);
+  try {
+    const sessionsResponse = await client.session.list();
+    const topicsResponse = await bot.getForumTopics(config.groupId);
+    if (sessionsResponse.error) {
+      logger.error("Failed to list sessions", { error: sessionsResponse.error });
+    } else if (topicsResponse.error) {
+      logger.error("Failed to get forum topics", { error: String(topicsResponse.error) });
+    } else {
+      const sessions = sessionsResponse.data || [];
+      console.log(sessions);
+      const topics = topicsResponse.topics || [];
+      const topicMap = /* @__PURE__ */ new Map();
+      for (const topic of topics) {
+        topicMap.set(topic.name, topic);
+      }
+      for (const session of sessions) {
+        const topicName = `Session ${session.id.slice(0, 8)}`;
+        const existingTopic = topicMap.get(topicName);
+        if (!existingTopic) {
+          try {
+            const newTopic = await bot.createForumTopic(config.groupId, topicName);
+            sessionStore.create(newTopic.message_thread_id, session.id);
+            logger.info("Created topic for existing session", {
+              sessionId: session.id,
+              topicId: newTopic.message_thread_id
+            });
+          } catch (error) {
+            logger.error("Failed to create topic for session", {
+              sessionId: session.id,
+              error: String(error)
+            });
+          }
+        } else {
+          sessionStore.create(existingTopic.message_thread_id, session.id);
+        }
+      }
+    }
+  } catch (error) {
+    logger.error("Failed to initialize topics", { error: String(error) });
+  }
   bot.start().catch((error) => {
     logger.error("Failed to start bot", { error: String(error) });
   });
