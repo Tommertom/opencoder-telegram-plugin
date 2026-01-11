@@ -1,29 +1,25 @@
-# Dependencies
+# Node
 node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
 
 # Build output
 dist/
+*.tsbuildinfo
 
-# Cloudflare Wrangler
-.wrangler/
-
-# Environment files
+# Environment
 .env
 .env.local
 .env.*.local
 
-# Logs
-*.log
-npm-debug.log*
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE (keeping .idea tracked if needed, but ignoring local configs)
+# IDE
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
 
-.idea/
-docs/plans/*
+# OS
+.DS_Store
+Thumbs.db
