@@ -4,6 +4,7 @@ import type { Logger } from "./lib/logger.js";
 import type { Config } from "./config.js";
 import { SessionStore } from "./session-store.js";
 import { sendTemporaryMessage } from "./lib/utils.js";
+import { TelegramQueue } from "./lib/telegram-queue.js";
 
 export interface TelegramBotManager {
   start(): Promise<void>;
@@ -11,6 +12,7 @@ export interface TelegramBotManager {
   sendMessage(topicId: number, text: string): Promise<void>;
   getForumTopics(groupId: number): Promise<any>;
   createForumTopic(groupId: number, name: string): Promise<any>;
+  queue: TelegramQueue;
 }
 
 let botInstance: Bot | null = null;
@@ -28,10 +30,14 @@ export function createTelegramBot(
   sessionStore: SessionStore,
 ): TelegramBotManager {
   console.log("[Bot] createTelegramBot called");
+
+  // Create a shared queue instance for rate limiting
+  const queue = new TelegramQueue(500); // 500ms between API calls
+
   if (botInstance) {
     console.log("[Bot] Reusing existing bot instance");
     logger.warn("Bot already initialized, reusing existing instance");
-    return createBotManager(botInstance, config);
+    return createBotManager(botInstance, config, queue);
   }
 
   console.log("[Bot] Creating new Bot instance with token");
@@ -62,8 +68,12 @@ export function createTelegramBot(
       }
 
       const sessionId = createSessionResponse.data.id;
-      const topicName = `Session ${sessionId.slice(0, 8)}`;
-      const topic = await bot.api.createForumTopic(config.groupId, topicName);
+      const sessionTitle = createSessionResponse.data.title || `Session ${sessionId.slice(0, 8)}`;
+      const topicName =
+        sessionTitle.length > 100 ? `${sessionTitle.slice(0, 97)}...` : sessionTitle;
+
+      // Use queue for createForumTopic to avoid rate limiting
+      const topic = await queue.enqueue(() => bot.api.createForumTopic(config.groupId, topicName));
       const topicId = topic.message_thread_id;
 
       sessionStore.create(topicId, sessionId);
@@ -71,11 +81,15 @@ export function createTelegramBot(
       logger.info("Created new session with topic", {
         sessionId,
         topicId,
+        topicName,
       });
 
-      await bot.api.sendMessage(config.groupId, `✅ Session created: ${sessionId}`, {
-        message_thread_id: topicId,
-      });
+      // Use queue for sendMessage to avoid rate limiting
+      await queue.enqueue(() =>
+        bot.api.sendMessage(config.groupId, `✅ Session created: ${sessionId}`, {
+          message_thread_id: topicId,
+        }),
+      );
     } catch (error) {
       logger.error("Failed to create new session", { error: String(error) });
       await ctx.reply("❌ Failed to create session");
@@ -158,10 +172,10 @@ export function createTelegramBot(
   });
 
   console.log("[Bot] All handlers registered, creating bot manager");
-  return createBotManager(bot, config);
+  return createBotManager(bot, config, queue);
 }
 
-function createBotManager(bot: Bot, config: Config): TelegramBotManager {
+function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): TelegramBotManager {
   return {
     async start() {
       console.log("[Bot] start() called - beginning long polling...");
@@ -170,7 +184,7 @@ function createBotManager(bot: Bot, config: Config): TelegramBotManager {
         onStart: async () => {
           console.log("[Bot] Telegram bot polling started successfully");
           try {
-            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled");
+            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled", 1000, queue);
             console.log("[Bot] Startup message sent to group");
           } catch (error) {
             console.error("[Bot] Failed to send startup message:", error);
@@ -188,9 +202,12 @@ function createBotManager(bot: Bot, config: Config): TelegramBotManager {
 
     async sendMessage(topicId: number, text: string) {
       console.log(`[Bot] sendMessage to topic ${topicId}: "${text.slice(0, 50)}..."`);
-      await bot.api.sendMessage(config.groupId, text, {
-        message_thread_id: topicId,
-      });
+      // Use queue to avoid rate limiting
+      await queue.enqueue(() =>
+        bot.api.sendMessage(config.groupId, text, {
+          message_thread_id: topicId,
+        }),
+      );
     },
 
     async getForumTopics(groupId: number) {
@@ -209,9 +226,12 @@ function createBotManager(bot: Bot, config: Config): TelegramBotManager {
 
     async createForumTopic(groupId: number, name: string) {
       console.log(`[Bot] createForumTopic called: "${name}"`);
-      const result = await bot.api.createForumTopic(groupId, name);
+      // Use queue to avoid rate limiting
+      const result = await queue.enqueue(() => bot.api.createForumTopic(groupId, name));
       console.log(`[Bot] Created forum topic with ID: ${result.message_thread_id}`);
       return result;
     },
+
+    queue,
   };
 }

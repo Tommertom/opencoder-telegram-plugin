@@ -18,6 +18,7 @@ function loadConfig() {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const groupId = process.env.TELEGRAM_GROUP_ID;
   const allowedUserIdsStr = process.env.TELEGRAM_ALLOWED_USER_IDS;
+  const maxSessionsStr = process.env.TELEGRAM_MAX_SESSIONS;
   if (!botToken || botToken.trim() === "") {
     console.error("[Config] Missing TELEGRAM_BOT_TOKEN");
     throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
@@ -38,13 +39,23 @@ function loadConfig() {
       "Missing or invalid TELEGRAM_ALLOWED_USER_IDS (must be comma-separated numeric user IDs)"
     );
   }
+  let maxSessions = 5;
+  if (maxSessionsStr && maxSessionsStr.trim() !== "") {
+    const parsed = Number.parseInt(maxSessionsStr, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      maxSessions = parsed;
+    } else {
+      console.warn(`[Config] Invalid TELEGRAM_MAX_SESSIONS (${maxSessionsStr}), using default: 5`);
+    }
+  }
   console.log(
-    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}`
+    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}, maxSessions=${maxSessions}`
   );
   return {
     botToken,
     groupId: parsedGroupId,
-    allowedUserIds
+    allowedUserIds,
+    maxSessions
   };
 }
 
@@ -115,13 +126,19 @@ var MessageTracker = class {
 import { Bot } from "grammy";
 
 // src/lib/utils.ts
-async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3) {
+async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
   try {
-    const sentMessage = await bot.api.sendMessage(chatId, text);
+    const sendFn = () => bot.api.sendMessage(chatId, text);
+    const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
     const messageId = sentMessage.message_id;
     setTimeout(async () => {
       try {
-        await bot.api.deleteMessage(chatId, messageId);
+        const deleteFn = () => bot.api.deleteMessage(chatId, messageId);
+        if (queue) {
+          await queue.enqueue(deleteFn);
+        } else {
+          await deleteFn();
+        }
       } catch (error) {
         console.warn("Failed to delete temporary message", { error: String(error), messageId });
       }
@@ -130,6 +147,96 @@ async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3) {
     console.error("Failed to send temporary message", { error: String(error) });
   }
 }
+
+// src/lib/telegram-queue.ts
+var TelegramQueue = class {
+  queue = [];
+  processing = false;
+  intervalId = null;
+  intervalMs;
+  constructor(intervalMs = 500) {
+    this.intervalMs = intervalMs;
+  }
+  /**
+   * Add a Telegram API call to the queue
+   * @param fn - Async function that makes the Telegram API call
+   * @returns Promise that resolves when the call completes
+   */
+  enqueue(fn) {
+    return new Promise((resolve2, reject) => {
+      this.queue.push(async () => {
+        try {
+          const result = await fn();
+          resolve2(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      if (!this.processing) {
+        this.start();
+      }
+    });
+  }
+  /**
+   * Start processing the queue
+   */
+  start() {
+    if (this.processing) {
+      return;
+    }
+    this.processing = true;
+    this.intervalId = setInterval(() => {
+      this.processNext();
+    }, this.intervalMs);
+    this.processNext();
+  }
+  /**
+   * Process the next item in the queue
+   */
+  async processNext() {
+    if (this.queue.length === 0) {
+      this.stop();
+      return;
+    }
+    const fn = this.queue.shift();
+    if (fn) {
+      try {
+        await fn();
+      } catch (error) {
+        console.error("[TelegramQueue] Error processing queue item:", error);
+      }
+    }
+  }
+  /**
+   * Stop processing the queue
+   */
+  stop() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.processing = false;
+  }
+  /**
+   * Get the current queue size
+   */
+  get size() {
+    return this.queue.length;
+  }
+  /**
+   * Check if the queue is currently processing
+   */
+  get isProcessing() {
+    return this.processing;
+  }
+  /**
+   * Clear all pending items in the queue
+   */
+  clear() {
+    this.queue = [];
+    this.stop();
+  }
+};
 
 // src/bot.ts
 var botInstance = null;
@@ -140,10 +247,11 @@ function isUserAllowed(ctx, allowedUserIds) {
 }
 function createTelegramBot(config, client, logger, sessionStore) {
   console.log("[Bot] createTelegramBot called");
+  const queue = new TelegramQueue(500);
   if (botInstance) {
     console.log("[Bot] Reusing existing bot instance");
     logger.warn("Bot already initialized, reusing existing instance");
-    return createBotManager(botInstance, config);
+    return createBotManager(botInstance, config, queue);
   }
   console.log("[Bot] Creating new Bot instance with token");
   const bot = new Bot(config.botToken);
@@ -169,17 +277,21 @@ function createTelegramBot(config, client, logger, sessionStore) {
         return;
       }
       const sessionId = createSessionResponse.data.id;
-      const topicName = `Session ${sessionId.slice(0, 8)}`;
-      const topic = await bot.api.createForumTopic(config.groupId, topicName);
+      const sessionTitle = createSessionResponse.data.title || `Session ${sessionId.slice(0, 8)}`;
+      const topicName = sessionTitle.length > 100 ? `${sessionTitle.slice(0, 97)}...` : sessionTitle;
+      const topic = await queue.enqueue(() => bot.api.createForumTopic(config.groupId, topicName));
       const topicId = topic.message_thread_id;
       sessionStore.create(topicId, sessionId);
       logger.info("Created new session with topic", {
         sessionId,
-        topicId
+        topicId,
+        topicName
       });
-      await bot.api.sendMessage(config.groupId, `\u2705 Session created: ${sessionId}`, {
-        message_thread_id: topicId
-      });
+      await queue.enqueue(
+        () => bot.api.sendMessage(config.groupId, `\u2705 Session created: ${sessionId}`, {
+          message_thread_id: topicId
+        })
+      );
     } catch (error) {
       logger.error("Failed to create new session", { error: String(error) });
       await ctx.reply("\u274C Failed to create session");
@@ -250,9 +362,9 @@ function createTelegramBot(config, client, logger, sessionStore) {
     logger.error("Bot error", { error: String(error) });
   });
   console.log("[Bot] All handlers registered, creating bot manager");
-  return createBotManager(bot, config);
+  return createBotManager(bot, config, queue);
 }
-function createBotManager(bot, config) {
+function createBotManager(bot, config, queue) {
   return {
     async start() {
       console.log("[Bot] start() called - beginning long polling...");
@@ -261,7 +373,7 @@ function createBotManager(bot, config) {
         onStart: async () => {
           console.log("[Bot] Telegram bot polling started successfully");
           try {
-            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled");
+            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled", 1e3, queue);
             console.log("[Bot] Startup message sent to group");
           } catch (error) {
             console.error("[Bot] Failed to send startup message:", error);
@@ -277,9 +389,11 @@ function createBotManager(bot, config) {
     },
     async sendMessage(topicId, text) {
       console.log(`[Bot] sendMessage to topic ${topicId}: "${text.slice(0, 50)}..."`);
-      await bot.api.sendMessage(config.groupId, text, {
-        message_thread_id: topicId
-      });
+      await queue.enqueue(
+        () => bot.api.sendMessage(config.groupId, text, {
+          message_thread_id: topicId
+        })
+      );
     },
     async getForumTopics(groupId) {
       console.log(`[Bot] getForumTopics called for group ${groupId}`);
@@ -293,10 +407,11 @@ function createBotManager(bot, config) {
     },
     async createForumTopic(groupId, name) {
       console.log(`[Bot] createForumTopic called: "${name}"`);
-      const result = await bot.api.createForumTopic(groupId, name);
+      const result = await queue.enqueue(() => bot.api.createForumTopic(groupId, name));
       console.log(`[Bot] Created forum topic with ID: ${result.message_thread_id}`);
       return result;
-    }
+    },
+    queue
   };
 }
 
@@ -337,11 +452,13 @@ var TelegramRemote = async ({ client }) => {
         console.error("[TelegramRemote] Failed to get forum topics:", topicsResponse.error);
         logger.error("Failed to get forum topics", { error: String(topicsResponse.error) });
       } else {
-        const sessions = sessionsResponse.data || [];
+        const allSessions = sessionsResponse.data || [];
         const topics = topicsResponse.topics || [];
+        const sessions = allSessions.sort((a, b) => b.time.updated - a.time.updated).slice(0, config.maxSessions);
         console.log(
-          `[TelegramRemote] Found ${sessions.length} sessions and ${topics.length} topics`
+          `[TelegramRemote] Found ${allSessions.length} total sessions, syncing ${sessions.length} most recent (limit: ${config.maxSessions})`
         );
+        console.log(`[TelegramRemote] Found ${topics.length} existing topics`);
         const topicMap = /* @__PURE__ */ new Map();
         for (const topic of topics) {
           topicMap.set(topic.name, topic);
