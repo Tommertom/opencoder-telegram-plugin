@@ -152,8 +152,13 @@ function createBotManager(bot: Bot, config: Config): TelegramBotManager {
     async start() {
       await bot.start({
         drop_pending_updates: true,
-        onStart: () => {
+        onStart: async () => {
           console.log("Telegram bot started");
+          try {
+            await bot.api.sendMessage(config.groupId, "Messaging enabled");
+          } catch (error) {
+            console.error("Failed to send startup message", error);
+          }
         },
       });
     },
