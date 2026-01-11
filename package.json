@@ -2,13 +2,20 @@
   "name": "opencoder-telegram-remote-plugin",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "cd plugin && npm run build",
     "dev": "cd plugin && npm run dev",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "typecheck": "cd plugin && npm run typecheck"
+    "typecheck": "cd plugin && npm run typecheck",
+    "testing-group-sending": "node scripts/testing-group-sending.ts",
+    "testing-message-listener": "node scripts/testing-message-listener.ts"
+  },
+  "dependencies": {
+    "grammy": "^1.34.0",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.10"

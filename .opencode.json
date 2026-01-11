@@ -1,0 +1,8 @@
+{
+  "plugins": [
+    {
+      "name": "opencoder-telegram-remote-plugin",
+      "path": "./plugin/dist/telegram-remote.js"
+    }
+  ]
+}

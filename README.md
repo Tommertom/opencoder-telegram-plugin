@@ -2,6 +2,8 @@
 
 Control OpenCode sessions remotely via Telegram using Topics for session isolation.
 
+> **Disclaimer:** This project is not affiliated with, endorsed by, or sponsored by OpenCode, SST, or any of their affiliates. OpenCode is a trademark of SST.
+
 ## Features
 
 - 🔐 **Secure**: Whitelist-based user access control

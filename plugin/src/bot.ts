@@ -78,7 +78,8 @@ export function createTelegramBot(
 
     const topicId = ctx.message.message_thread_id;
     if (!topicId) {
-      logger.debug("Ignoring message without topic");
+      const userMessage = ctx.message.text;
+      await ctx.reply(`Nothing I can do with this ${userMessage}`);
       return;
     }
 

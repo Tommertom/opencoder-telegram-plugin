@@ -156,7 +156,8 @@ function createTelegramBot(config, client, logger, sessionStore) {
     if (ctx.message.text?.startsWith("/")) return;
     const topicId = ctx.message.message_thread_id;
     if (!topicId) {
-      logger.debug("Ignoring message without topic");
+      const userMessage2 = ctx.message.text;
+      await ctx.reply(`Nothing I can do with this ${userMessage2}`);
       return;
     }
     let sessionId = sessionStore.getSessionByTopic(topicId);
