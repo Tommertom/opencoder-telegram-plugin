@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && tsup",
-    "postbuild": "cp dist/telegram-remote.js ../.opencode/plugin/telegram-remote.js",
+    "postbuild": "node scripts/copy-build.js",
     "dev": "tsup --watch",
     "predev": "npm run build"
   },
