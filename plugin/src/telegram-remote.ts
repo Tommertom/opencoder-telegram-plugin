@@ -209,7 +209,7 @@ export const TelegramRemote: Plugin = async ({ client }) => {
             // Stop processing and clean up interval
             messageTracker.setProcessingPrompt(message.id, false);
             messageTracker.clearUpdateInterval(message.id);
-            
+
             const content = messageTracker.getContent(message.id);
             if (content) {
               const lines = content.split("\n");
