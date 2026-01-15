@@ -5,6 +5,8 @@ import { SessionStore } from "./session-store.js";
 import { MessageTracker } from "./message-tracker.js";
 import { createTelegramBot } from "./bot.js";
 
+const MAX_MESSAGE_SIZE = 5 * 1024 * 1024; // 5MB limit for in-memory message buffering
+
 export const TelegramRemote: Plugin = async ({ client }) => {
   console.log("[TelegramRemote] Plugin initialization started");
   const logger = createLogger(client);
@@ -187,6 +189,30 @@ export const TelegramRemote: Plugin = async ({ client }) => {
           messageTracker.markAsUser(message.id);
         } else if (message.role === "assistant") {
           messageTracker.markAsAssistant(message.id);
+
+          // Check if message is completed
+          if (message.time?.completed) {
+            const content = messageTracker.getContent(message.id);
+            if (content) {
+              const lines = content.split("\n");
+              if (lines.length > 100) {
+                const topicId = sessionStore.getTopicBySession(message.sessionID);
+                if (topicId) {
+                  console.log(
+                    `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as Markdown file.`,
+                  );
+                  try {
+                    await bot.sendDocument(topicId, content, "response.md");
+                  } catch (error) {
+                    console.error("[TelegramRemote] Failed to send document:", error);
+                    logger.error("Failed to send document", { error: String(error) });
+                  }
+                }
+              }
+              // Clean up the stored content after processing completion
+              messageTracker.clearContent(message.id);
+            }
+          }
         }
       }
 
@@ -210,11 +236,26 @@ export const TelegramRemote: Plugin = async ({ client }) => {
         }
 
         const delta = event.properties.delta;
-        if (delta && delta.trim()) {
-          console.log(
-            `[TelegramRemote] Sending delta to topic ${topicId}: "${delta.slice(0, 50)}..."`,
-          );
-          await bot.sendMessage(topicId, delta);
+        if (delta) {
+          // Accumulate the content in the message tracker
+          const currentContent = messageTracker.getContent(part.messageID) || "";
+
+          if (currentContent.length + delta.length > MAX_MESSAGE_SIZE) {
+            console.warn(
+              `[TelegramRemote] Message ${part.messageID} exceeded ${MAX_MESSAGE_SIZE} bytes. Truncating.`,
+            );
+            // Stop accumulating to prevent memory exhaustion, but continue relaying deltas if needed
+            // Ideally we should flag this message as truncated
+          } else {
+            messageTracker.updateContent(part.messageID, currentContent + delta);
+          }
+
+          if (delta.trim()) {
+            console.log(
+              `[TelegramRemote] Sending delta to topic ${topicId}: "${delta.slice(0, 50)}..."`,
+            );
+            await bot.sendMessage(topicId, delta);
+          }
         }
       }
     },

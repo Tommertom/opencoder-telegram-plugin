@@ -1,4 +1,4 @@
-import { Bot, type Context } from "grammy";
+import { Bot, type Context, InputFile } from "grammy";
 import type { OpencodeClient } from "./lib/types.js";
 import type { Logger } from "./lib/logger.js";
 import type { Config } from "./config.js";
@@ -13,6 +13,7 @@ export interface TelegramBotManager {
   getForumTopics(groupId: number): Promise<any>;
   createForumTopic(groupId: number, name: string): Promise<any>;
   queue: TelegramQueue;
+  sendDocument(topicId: number, document: string | Uint8Array, filename: string): Promise<void>;
 }
 
 let botInstance: Bot | null = null;
@@ -94,6 +95,115 @@ export function createTelegramBot(
       logger.error("Failed to create new session", { error: String(error) });
       await ctx.reply("❌ Failed to create session");
     }
+  });
+
+  bot.command("cleartopics", async (ctx) => {
+    console.log("[Bot] /cleartopics command received");
+    if (ctx.chat?.id !== config.groupId) return;
+
+    const topicIds = sessionStore.getAllTopicIds().filter((topicId) => topicId !== 1);
+
+    if (topicIds.length === 0) {
+      await ctx.reply("No topics to clear.");
+      return;
+    }
+
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    for (const topicId of topicIds) {
+      try {
+        await queue.enqueue(() => bot.api.deleteForumTopic(config.groupId, topicId));
+        deletedCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        logger.error("Failed to delete forum topic", {
+          topicId,
+          error: String(error),
+        });
+      }
+    }
+
+    sessionStore.clearAll();
+
+    if (failedCount > 0) {
+      await ctx.reply(`Cleared ${deletedCount} topics, ${failedCount} failed.`);
+    } else {
+      await ctx.reply(`Cleared ${deletedCount} topics.`);
+    }
+  });
+
+  bot.command("deletesessions", async (ctx) => {
+    console.log("[Bot] /deletesessions command received");
+    if (ctx.chat?.id !== config.groupId) return;
+
+    let deletedSessions = 0;
+    let failedSessions = 0;
+
+    try {
+      const sessionsResponse = await client.session.list();
+
+      if (sessionsResponse.error) {
+        logger.error("Failed to list sessions", { error: sessionsResponse.error });
+        await ctx.reply("❌ Failed to list sessions");
+        return;
+      }
+
+      const sessions = sessionsResponse.data || [];
+
+      for (const session of sessions) {
+        try {
+          const deleteResponse = await client.session.delete({
+            path: { id: session.id },
+          });
+
+          if (deleteResponse.error) {
+            failedSessions += 1;
+            logger.error("Failed to delete session", {
+              sessionId: session.id,
+              error: deleteResponse.error,
+            });
+            continue;
+          }
+
+          deletedSessions += 1;
+        } catch (error) {
+          failedSessions += 1;
+          logger.error("Failed to delete session", {
+            sessionId: session.id,
+            error: String(error),
+          });
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to delete sessions", { error: String(error) });
+      await ctx.reply("❌ Failed to delete sessions");
+      return;
+    }
+
+    const topicIds = sessionStore.getAllTopicIds().filter((topicId) => topicId !== 1);
+    let deletedTopics = 0;
+    let failedTopics = 0;
+
+    for (const topicId of topicIds) {
+      try {
+        await queue.enqueue(() => bot.api.deleteForumTopic(config.groupId, topicId));
+        deletedTopics += 1;
+      } catch (error) {
+        failedTopics += 1;
+        logger.error("Failed to delete forum topic", {
+          topicId,
+          error: String(error),
+        });
+      }
+    }
+
+    sessionStore.clearAll();
+
+    await ctx.reply(
+      `Deleted ${deletedSessions} sessions (${failedSessions} failed). ` +
+      `Cleared ${deletedTopics} topics (${failedTopics} failed).`,
+    );
   });
 
   bot.on("message:text", async (ctx) => {
@@ -207,6 +317,19 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
         bot.api.sendMessage(config.groupId, text, {
           message_thread_id: topicId,
         }),
+      );
+    },
+
+    async sendDocument(topicId: number, document: string | Uint8Array, filename: string) {
+      console.log(`[Bot] sendDocument to topic ${topicId}: filename="${filename}"`);
+      await queue.enqueue(() =>
+        bot.api.sendDocument(
+          config.groupId,
+          new InputFile(typeof document === "string" ? Buffer.from(document) : document, filename),
+          {
+            message_thread_id: topicId,
+          },
+        ),
       );
     },
 

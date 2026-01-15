@@ -100,15 +100,24 @@ var SessionStore = class {
   has(topicId) {
     return this.topicToSession.has(topicId);
   }
+  getAllTopicIds() {
+    return Array.from(this.topicToSession.keys());
+  }
+  clearAll() {
+    this.topicToSession.clear();
+    this.sessionToTopic.clear();
+  }
 };
 
 // src/message-tracker.ts
 var MessageTracker = class {
   userMessages = /* @__PURE__ */ new Set();
   assistantMessages = /* @__PURE__ */ new Set();
+  messageContent = /* @__PURE__ */ new Map();
   markAsUser(messageId) {
     this.userMessages.add(messageId);
     this.assistantMessages.delete(messageId);
+    this.messageContent.delete(messageId);
   }
   markAsAssistant(messageId) {
     this.assistantMessages.add(messageId);
@@ -120,10 +129,19 @@ var MessageTracker = class {
   isUser(messageId) {
     return this.userMessages.has(messageId);
   }
+  updateContent(messageId, content) {
+    this.messageContent.set(messageId, content);
+  }
+  getContent(messageId) {
+    return this.messageContent.get(messageId);
+  }
+  clearContent(messageId) {
+    this.messageContent.delete(messageId);
+  }
 };
 
 // src/bot.ts
-import { Bot } from "grammy";
+import { Bot, InputFile } from "grammy";
 
 // src/lib/utils.ts
 async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
@@ -297,6 +315,95 @@ function createTelegramBot(config, client, logger, sessionStore) {
       await ctx.reply("\u274C Failed to create session");
     }
   });
+  bot.command("cleartopics", async (ctx) => {
+    console.log("[Bot] /cleartopics command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    const topicIds = sessionStore.getAllTopicIds().filter((topicId) => topicId !== 1);
+    if (topicIds.length === 0) {
+      await ctx.reply("No topics to clear.");
+      return;
+    }
+    let deletedCount = 0;
+    let failedCount = 0;
+    for (const topicId of topicIds) {
+      try {
+        await queue.enqueue(() => bot.api.deleteForumTopic(config.groupId, topicId));
+        deletedCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        logger.error("Failed to delete forum topic", {
+          topicId,
+          error: String(error)
+        });
+      }
+    }
+    sessionStore.clearAll();
+    if (failedCount > 0) {
+      await ctx.reply(`Cleared ${deletedCount} topics, ${failedCount} failed.`);
+    } else {
+      await ctx.reply(`Cleared ${deletedCount} topics.`);
+    }
+  });
+  bot.command("deletesessions", async (ctx) => {
+    console.log("[Bot] /deletesessions command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    let deletedSessions = 0;
+    let failedSessions = 0;
+    try {
+      const sessionsResponse = await client.session.list();
+      if (sessionsResponse.error) {
+        logger.error("Failed to list sessions", { error: sessionsResponse.error });
+        await ctx.reply("\u274C Failed to list sessions");
+        return;
+      }
+      const sessions = sessionsResponse.data || [];
+      for (const session of sessions) {
+        try {
+          const deleteResponse = await client.session.delete({
+            path: { id: session.id }
+          });
+          if (deleteResponse.error) {
+            failedSessions += 1;
+            logger.error("Failed to delete session", {
+              sessionId: session.id,
+              error: deleteResponse.error
+            });
+            continue;
+          }
+          deletedSessions += 1;
+        } catch (error) {
+          failedSessions += 1;
+          logger.error("Failed to delete session", {
+            sessionId: session.id,
+            error: String(error)
+          });
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to delete sessions", { error: String(error) });
+      await ctx.reply("\u274C Failed to delete sessions");
+      return;
+    }
+    const topicIds = sessionStore.getAllTopicIds().filter((topicId) => topicId !== 1);
+    let deletedTopics = 0;
+    let failedTopics = 0;
+    for (const topicId of topicIds) {
+      try {
+        await queue.enqueue(() => bot.api.deleteForumTopic(config.groupId, topicId));
+        deletedTopics += 1;
+      } catch (error) {
+        failedTopics += 1;
+        logger.error("Failed to delete forum topic", {
+          topicId,
+          error: String(error)
+        });
+      }
+    }
+    sessionStore.clearAll();
+    await ctx.reply(
+      `Deleted ${deletedSessions} sessions (${failedSessions} failed). Cleared ${deletedTopics} topics (${failedTopics} failed).`
+    );
+  });
   bot.on("message:text", async (ctx) => {
     console.log(`[Bot] Text message received: "${ctx.message.text?.slice(0, 50)}..."`);
     if (ctx.chat?.id !== config.groupId) return;
@@ -395,6 +502,18 @@ function createBotManager(bot, config, queue) {
         })
       );
     },
+    async sendDocument(topicId, document, filename) {
+      console.log(`[Bot] sendDocument to topic ${topicId}: filename="${filename}"`);
+      await queue.enqueue(
+        () => bot.api.sendDocument(
+          config.groupId,
+          new InputFile(typeof document === "string" ? Buffer.from(document) : document, filename),
+          {
+            message_thread_id: topicId
+          }
+        )
+      );
+    },
     async getForumTopics(groupId) {
       console.log(`[Bot] getForumTopics called for group ${groupId}`);
       try {
@@ -416,6 +535,7 @@ function createBotManager(bot, config, queue) {
 }
 
 // src/telegram-remote.ts
+var MAX_MESSAGE_SIZE = 5 * 1024 * 1024;
 var TelegramRemote = async ({ client }) => {
   console.log("[TelegramRemote] Plugin initialization started");
   const logger = createLogger(client);
@@ -569,6 +689,27 @@ var TelegramRemote = async ({ client }) => {
           messageTracker.markAsUser(message.id);
         } else if (message.role === "assistant") {
           messageTracker.markAsAssistant(message.id);
+          if (message.time?.completed) {
+            const content = messageTracker.getContent(message.id);
+            if (content) {
+              const lines = content.split("\n");
+              if (lines.length > 100) {
+                const topicId = sessionStore.getTopicBySession(message.sessionID);
+                if (topicId) {
+                  console.log(
+                    `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as Markdown file.`
+                  );
+                  try {
+                    await bot.sendDocument(topicId, content, "response.md");
+                  } catch (error) {
+                    console.error("[TelegramRemote] Failed to send document:", error);
+                    logger.error("Failed to send document", { error: String(error) });
+                  }
+                }
+              }
+              messageTracker.clearContent(message.id);
+            }
+          }
         }
       }
       if (event.type === "message.part.updated") {
@@ -587,11 +728,21 @@ var TelegramRemote = async ({ client }) => {
           return;
         }
         const delta = event.properties.delta;
-        if (delta && delta.trim()) {
-          console.log(
-            `[TelegramRemote] Sending delta to topic ${topicId}: "${delta.slice(0, 50)}..."`
-          );
-          await bot.sendMessage(topicId, delta);
+        if (delta) {
+          const currentContent = messageTracker.getContent(part.messageID) || "";
+          if (currentContent.length + delta.length > MAX_MESSAGE_SIZE) {
+            console.warn(
+              `[TelegramRemote] Message ${part.messageID} exceeded ${MAX_MESSAGE_SIZE} bytes. Truncating.`
+            );
+          } else {
+            messageTracker.updateContent(part.messageID, currentContent + delta);
+          }
+          if (delta.trim()) {
+            console.log(
+              `[TelegramRemote] Sending delta to topic ${topicId}: "${delta.slice(0, 50)}..."`
+            );
+            await bot.sendMessage(topicId, delta);
+          }
         }
       }
     }

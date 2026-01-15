@@ -23,4 +23,13 @@ export class SessionStore {
   has(topicId: number): boolean {
     return this.topicToSession.has(topicId);
   }
+
+  getAllTopicIds(): number[] {
+    return Array.from(this.topicToSession.keys());
+  }
+
+  clearAll(): void {
+    this.topicToSession.clear();
+    this.sessionToTopic.clear();
+  }
 }
