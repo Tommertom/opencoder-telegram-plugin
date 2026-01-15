@@ -1,12 +1,7 @@
 import type { Context } from "grammy";
 import type { CommandDeps } from "./types.js";
 
-export function createMessageTextHandler({
-  config,
-  client,
-  logger,
-  sessionStore,
-}: CommandDeps) {
+export function createMessageTextHandler({ config, client, logger, sessionStore }: CommandDeps) {
   return async (ctx: Context) => {
     console.log(`[Bot] Text message received: "${ctx.message?.text?.slice(0, 50)}..."`);
     if (ctx.chat?.id !== config.groupId) return;

@@ -3,355 +3,8 @@
  * https://github.com/YOUR_USERNAME/opencoder-telegram-remote-plugin
  */
 
-// src/config.ts
-import { config as loadEnv } from "dotenv";
-import { resolve } from "path";
-loadEnv({ path: resolve(process.cwd(), ".env") });
-function parseAllowedUserIds(value) {
-  if (!value || value.trim() === "") {
-    return [];
-  }
-  return value.split(",").map((id) => id.trim()).filter((id) => id !== "").map((id) => Number.parseInt(id, 10)).filter((id) => !Number.isNaN(id));
-}
-function loadConfig() {
-  console.log("[Config] Loading environment configuration...");
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const groupId = process.env.TELEGRAM_GROUP_ID;
-  const allowedUserIdsStr = process.env.TELEGRAM_ALLOWED_USER_IDS;
-  const maxSessionsStr = process.env.TELEGRAM_MAX_SESSIONS;
-  if (!botToken || botToken.trim() === "") {
-    console.error("[Config] Missing TELEGRAM_BOT_TOKEN");
-    throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
-  }
-  if (!groupId || groupId.trim() === "") {
-    console.error("[Config] Missing TELEGRAM_GROUP_ID");
-    throw new Error("Missing required environment variable: TELEGRAM_GROUP_ID");
-  }
-  const parsedGroupId = Number.parseInt(groupId, 10);
-  if (Number.isNaN(parsedGroupId)) {
-    console.error("[Config] Invalid TELEGRAM_GROUP_ID (not a number)");
-    throw new Error("TELEGRAM_GROUP_ID must be a valid number");
-  }
-  const allowedUserIds = parseAllowedUserIds(allowedUserIdsStr);
-  if (allowedUserIds.length === 0) {
-    console.error("[Config] Missing or invalid TELEGRAM_ALLOWED_USER_IDS");
-    throw new Error(
-      "Missing or invalid TELEGRAM_ALLOWED_USER_IDS (must be comma-separated numeric user IDs)"
-    );
-  }
-  let maxSessions = 5;
-  if (maxSessionsStr && maxSessionsStr.trim() !== "") {
-    const parsed = Number.parseInt(maxSessionsStr, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      maxSessions = parsed;
-    } else {
-      console.warn(`[Config] Invalid TELEGRAM_MAX_SESSIONS (${maxSessionsStr}), using default: 5`);
-    }
-  }
-  console.log(
-    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}, maxSessions=${maxSessions}`
-  );
-  return {
-    botToken,
-    groupId: parsedGroupId,
-    allowedUserIds,
-    maxSessions
-  };
-}
-
-// src/lib/config.ts
-var SERVICE_NAME = "TelegramRemote";
-
-// src/lib/logger.ts
-function log(client, level, message, extra) {
-  client.app.log({
-    body: {
-      service: SERVICE_NAME,
-      level,
-      message,
-      extra
-    }
-  }).catch(() => {
-  });
-}
-function createLogger(client) {
-  return {
-    debug: (message, extra) => log(client, "debug", message, extra),
-    info: (message, extra) => log(client, "info", message, extra),
-    warn: (message, extra) => log(client, "warn", message, extra),
-    error: (message, extra) => log(client, "error", message, extra)
-  };
-}
-
-// src/session-store.ts
-var SessionStore = class {
-  topicToSession = /* @__PURE__ */ new Map();
-  sessionToTopic = /* @__PURE__ */ new Map();
-  topicToPromptMessageId = /* @__PURE__ */ new Map();
-  // topicId -> Telegram message ID
-  create(topicId, sessionId) {
-    this.topicToSession.set(topicId, sessionId);
-    this.sessionToTopic.set(sessionId, topicId);
-  }
-  getSessionByTopic(topicId) {
-    return this.topicToSession.get(topicId);
-  }
-  getTopicBySession(sessionId) {
-    return this.sessionToTopic.get(sessionId);
-  }
-  has(topicId) {
-    return this.topicToSession.has(topicId);
-  }
-  getAllTopicIds() {
-    return Array.from(this.topicToSession.keys());
-  }
-  setPromptMessageId(topicId, messageId) {
-    this.topicToPromptMessageId.set(topicId, messageId);
-  }
-  getPromptMessageId(topicId) {
-    return this.topicToPromptMessageId.get(topicId);
-  }
-  clearPromptMessageId(topicId) {
-    this.topicToPromptMessageId.delete(topicId);
-  }
-  clearAll() {
-    this.topicToSession.clear();
-    this.sessionToTopic.clear();
-    this.topicToPromptMessageId.clear();
-  }
-};
-
-// src/message-tracker.ts
-var MessageTracker = class {
-  userMessages = /* @__PURE__ */ new Set();
-  assistantMessages = /* @__PURE__ */ new Set();
-  messageContent = /* @__PURE__ */ new Map();
-  statusMessageIds = /* @__PURE__ */ new Map();
-  // messageId -> telegram message ID
-  processingPrompts = /* @__PURE__ */ new Map();
-  // messageId -> processing flag
-  latestUpdates = /* @__PURE__ */ new Map();
-  // messageId -> latest update text
-  updateIntervals = /* @__PURE__ */ new Map();
-  // messageId -> interval handle
-  markAsUser(messageId) {
-    this.userMessages.add(messageId);
-    this.assistantMessages.delete(messageId);
-    this.messageContent.delete(messageId);
-  }
-  markAsAssistant(messageId) {
-    this.assistantMessages.add(messageId);
-    this.userMessages.delete(messageId);
-  }
-  isAssistant(messageId) {
-    return this.assistantMessages.has(messageId);
-  }
-  isUser(messageId) {
-    return this.userMessages.has(messageId);
-  }
-  updateContent(messageId, content) {
-    this.messageContent.set(messageId, content);
-  }
-  getContent(messageId) {
-    return this.messageContent.get(messageId);
-  }
-  clearContent(messageId) {
-    this.messageContent.delete(messageId);
-  }
-  setStatusMessageId(messageId, telegramMessageId) {
-    this.statusMessageIds.set(messageId, telegramMessageId);
-  }
-  getStatusMessageId(messageId) {
-    return this.statusMessageIds.get(messageId);
-  }
-  setProcessingPrompt(messageId, processing) {
-    this.processingPrompts.set(messageId, processing);
-  }
-  isProcessingPrompt(messageId) {
-    return this.processingPrompts.get(messageId) || false;
-  }
-  setLatestUpdate(messageId, text) {
-    this.latestUpdates.set(messageId, text);
-  }
-  getLatestUpdate(messageId) {
-    return this.latestUpdates.get(messageId);
-  }
-  setUpdateInterval(messageId, interval) {
-    this.updateIntervals.set(messageId, interval);
-  }
-  clearUpdateInterval(messageId) {
-    const interval = this.updateIntervals.get(messageId);
-    if (interval) {
-      clearInterval(interval);
-      this.updateIntervals.delete(messageId);
-    }
-  }
-  clearAllTracking(messageId) {
-    this.clearUpdateInterval(messageId);
-    this.statusMessageIds.delete(messageId);
-    this.processingPrompts.delete(messageId);
-    this.latestUpdates.delete(messageId);
-    this.clearContent(messageId);
-  }
-};
-
 // src/bot.ts
 import { Bot, InputFile } from "grammy";
-
-// src/lib/utils.ts
-async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
-  try {
-    const sendFn = () => bot.api.sendMessage(chatId, text);
-    const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
-    const messageId = sentMessage.message_id;
-    setTimeout(async () => {
-      try {
-        const deleteFn = () => bot.api.deleteMessage(chatId, messageId);
-        if (queue) {
-          await queue.enqueue(deleteFn);
-        } else {
-          await deleteFn();
-        }
-      } catch (error) {
-        console.warn("Failed to delete temporary message", { error: String(error), messageId });
-      }
-    }, durationMs);
-  } catch (error) {
-    console.error("Failed to send temporary message", { error: String(error) });
-  }
-}
-
-// src/lib/telegram-queue.ts
-var TelegramQueue = class {
-  queue = [];
-  processing = false;
-  intervalId = null;
-  intervalMs;
-  constructor(intervalMs = 500) {
-    this.intervalMs = intervalMs;
-  }
-  /**
-   * Add a Telegram API call to the queue
-   * @param fn - Async function that makes the Telegram API call
-   * @returns Promise that resolves when the call completes
-   */
-  enqueue(fn) {
-    return new Promise((resolve2, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await fn();
-          resolve2(result);
-        } catch (error) {
-          reject(error);
-        }
-      });
-      if (!this.processing) {
-        this.start();
-      }
-    });
-  }
-  /**
-   * Start processing the queue
-   */
-  start() {
-    if (this.processing) {
-      return;
-    }
-    this.processing = true;
-    this.intervalId = setInterval(() => {
-      this.processNext();
-    }, this.intervalMs);
-    this.processNext();
-  }
-  /**
-   * Process the next item in the queue
-   */
-  async processNext() {
-    if (this.queue.length === 0) {
-      this.stop();
-      return;
-    }
-    const fn = this.queue.shift();
-    if (fn) {
-      try {
-        await fn();
-      } catch (error) {
-        console.error("[TelegramQueue] Error processing queue item:", error);
-      }
-    }
-  }
-  /**
-   * Stop processing the queue
-   */
-  stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    this.processing = false;
-  }
-  /**
-   * Get the current queue size
-   */
-  get size() {
-    return this.queue.length;
-  }
-  /**
-   * Check if the queue is currently processing
-   */
-  get isProcessing() {
-    return this.processing;
-  }
-  /**
-   * Clear all pending items in the queue
-   */
-  clear() {
-    this.queue = [];
-    this.stop();
-  }
-};
-
-// src/commands/new.ts
-function createNewCommandHandler({
-  bot,
-  config,
-  client,
-  logger,
-  sessionStore,
-  queue
-}) {
-  return async (ctx) => {
-    console.log("[Bot] /new command received");
-    if (ctx.chat?.id !== config.groupId) return;
-    try {
-      const createSessionResponse = await client.session.create({ body: {} });
-      if (createSessionResponse.error) {
-        logger.error("Failed to create session", { error: createSessionResponse.error });
-        await ctx.reply("\u274C Failed to create session");
-        return;
-      }
-      const sessionId = createSessionResponse.data.id;
-      const sessionTitle = createSessionResponse.data.title || `Session ${sessionId.slice(0, 8)}`;
-      const topicName = sessionTitle.length > 100 ? `${sessionTitle.slice(0, 97)}...` : sessionTitle;
-      const topic = await queue.enqueue(() => bot.api.createForumTopic(config.groupId, topicName));
-      const topicId = topic.message_thread_id;
-      sessionStore.create(topicId, sessionId);
-      logger.info("Created new session with topic", {
-        sessionId,
-        topicId,
-        topicName
-      });
-      await queue.enqueue(
-        () => bot.api.sendMessage(config.groupId, `\u2705 Session created: ${sessionId}`, {
-          message_thread_id: topicId
-        })
-      );
-    } catch (error) {
-      logger.error("Failed to create new session", { error: String(error) });
-      await ctx.reply("\u274C Failed to create session");
-    }
-  };
-}
 
 // src/commands/cleartopics.ts
 function createClearTopicsCommandHandler({
@@ -464,12 +117,7 @@ function createDeleteSessionsCommandHandler({
 }
 
 // src/commands/message-text.command.ts
-function createMessageTextHandler({
-  config,
-  client,
-  logger,
-  sessionStore
-}) {
+function createMessageTextHandler({ config, client, logger, sessionStore }) {
   return async (ctx) => {
     console.log(`[Bot] Text message received: "${ctx.message?.text?.slice(0, 50)}..."`);
     if (ctx.chat?.id !== config.groupId) return;
@@ -530,6 +178,161 @@ function createMessageTextHandler({
       await ctx.reply("\u274C Failed to process message");
     }
   };
+}
+
+// src/commands/new.ts
+function createNewCommandHandler({
+  bot,
+  config,
+  client,
+  logger,
+  sessionStore,
+  queue
+}) {
+  return async (ctx) => {
+    console.log("[Bot] /new command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    try {
+      const createSessionResponse = await client.session.create({ body: {} });
+      if (createSessionResponse.error) {
+        logger.error("Failed to create session", { error: createSessionResponse.error });
+        await ctx.reply("\u274C Failed to create session");
+        return;
+      }
+      const sessionId = createSessionResponse.data.id;
+      const sessionTitle = createSessionResponse.data.title || `Session ${sessionId.slice(0, 8)}`;
+      const topicName = sessionTitle.length > 100 ? `${sessionTitle.slice(0, 97)}...` : sessionTitle;
+      const topic = await queue.enqueue(() => bot.api.createForumTopic(config.groupId, topicName));
+      const topicId = topic.message_thread_id;
+      sessionStore.create(topicId, sessionId);
+      logger.info("Created new session with topic", {
+        sessionId,
+        topicId,
+        topicName
+      });
+      await queue.enqueue(
+        () => bot.api.sendMessage(config.groupId, `\u2705 Session created: ${sessionId}`, {
+          message_thread_id: topicId
+        })
+      );
+    } catch (error) {
+      logger.error("Failed to create new session", { error: String(error) });
+      await ctx.reply("\u274C Failed to create session");
+    }
+  };
+}
+
+// src/lib/telegram-queue.ts
+var TelegramQueue = class {
+  queue = [];
+  processing = false;
+  intervalId = null;
+  intervalMs;
+  constructor(intervalMs = 500) {
+    this.intervalMs = intervalMs;
+  }
+  /**
+   * Add a Telegram API call to the queue
+   * @param fn - Async function that makes the Telegram API call
+   * @returns Promise that resolves when the call completes
+   */
+  enqueue(fn) {
+    return new Promise((resolve2, reject) => {
+      this.queue.push(async () => {
+        try {
+          const result = await fn();
+          resolve2(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      if (!this.processing) {
+        this.start();
+      }
+    });
+  }
+  /**
+   * Start processing the queue
+   */
+  start() {
+    if (this.processing) {
+      return;
+    }
+    this.processing = true;
+    this.intervalId = setInterval(() => {
+      this.processNext();
+    }, this.intervalMs);
+    this.processNext();
+  }
+  /**
+   * Process the next item in the queue
+   */
+  async processNext() {
+    if (this.queue.length === 0) {
+      this.stop();
+      return;
+    }
+    const fn = this.queue.shift();
+    if (fn) {
+      try {
+        await fn();
+      } catch (error) {
+        console.error("[TelegramQueue] Error processing queue item:", error);
+      }
+    }
+  }
+  /**
+   * Stop processing the queue
+   */
+  stop() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.processing = false;
+  }
+  /**
+   * Get the current queue size
+   */
+  get size() {
+    return this.queue.length;
+  }
+  /**
+   * Check if the queue is currently processing
+   */
+  get isProcessing() {
+    return this.processing;
+  }
+  /**
+   * Clear all pending items in the queue
+   */
+  clear() {
+    this.queue = [];
+    this.stop();
+  }
+};
+
+// src/lib/utils.ts
+async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
+  try {
+    const sendFn = () => bot.api.sendMessage(chatId, text);
+    const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
+    const messageId = sentMessage.message_id;
+    setTimeout(async () => {
+      try {
+        const deleteFn = () => bot.api.deleteMessage(chatId, messageId);
+        if (queue) {
+          await queue.enqueue(deleteFn);
+        } else {
+          await deleteFn();
+        }
+      } catch (error) {
+        console.warn("Failed to delete temporary message", { error: String(error), messageId });
+      }
+    }, durationMs);
+  } catch (error) {
+    console.error("Failed to send temporary message", { error: String(error) });
+  }
 }
 
 // src/bot.ts
@@ -611,14 +414,10 @@ function createBotManager(bot, config, queue) {
       );
     },
     async editMessage(topicId, messageId, text) {
-      console.log(`[Bot] editMessage in topic ${topicId}, message ${messageId}: "${text.slice(0, 50)}..."`);
-      await queue.enqueue(
-        () => bot.api.editMessageText(
-          config.groupId,
-          messageId,
-          text
-        )
+      console.log(
+        `[Bot] editMessage in topic ${topicId}, message ${messageId}: "${text.slice(0, 50)}..."`
       );
+      await queue.enqueue(() => bot.api.editMessageText(config.groupId, messageId, text));
     },
     async sendDocument(topicId, document, filename) {
       console.log(`[Bot] sendDocument to topic ${topicId}: filename="${filename}"`);
@@ -652,8 +451,328 @@ function createBotManager(bot, config, queue) {
   };
 }
 
-// src/telegram-remote.ts
+// src/config.ts
+import { resolve } from "path";
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: resolve(process.cwd(), ".env") });
+function parseAllowedUserIds(value) {
+  if (!value || value.trim() === "") {
+    return [];
+  }
+  return value.split(",").map((id) => id.trim()).filter((id) => id !== "").map((id) => Number.parseInt(id, 10)).filter((id) => !Number.isNaN(id));
+}
+function loadConfig() {
+  console.log("[Config] Loading environment configuration...");
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const groupId = process.env.TELEGRAM_GROUP_ID;
+  const allowedUserIdsStr = process.env.TELEGRAM_ALLOWED_USER_IDS;
+  const maxSessionsStr = process.env.TELEGRAM_MAX_SESSIONS;
+  if (!botToken || botToken.trim() === "") {
+    console.error("[Config] Missing TELEGRAM_BOT_TOKEN");
+    throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
+  }
+  if (!groupId || groupId.trim() === "") {
+    console.error("[Config] Missing TELEGRAM_GROUP_ID");
+    throw new Error("Missing required environment variable: TELEGRAM_GROUP_ID");
+  }
+  const parsedGroupId = Number.parseInt(groupId, 10);
+  if (Number.isNaN(parsedGroupId)) {
+    console.error("[Config] Invalid TELEGRAM_GROUP_ID (not a number)");
+    throw new Error("TELEGRAM_GROUP_ID must be a valid number");
+  }
+  const allowedUserIds = parseAllowedUserIds(allowedUserIdsStr);
+  if (allowedUserIds.length === 0) {
+    console.error("[Config] Missing or invalid TELEGRAM_ALLOWED_USER_IDS");
+    throw new Error(
+      "Missing or invalid TELEGRAM_ALLOWED_USER_IDS (must be comma-separated numeric user IDs)"
+    );
+  }
+  let maxSessions = 5;
+  if (maxSessionsStr && maxSessionsStr.trim() !== "") {
+    const parsed = Number.parseInt(maxSessionsStr, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      maxSessions = parsed;
+    } else {
+      console.warn(`[Config] Invalid TELEGRAM_MAX_SESSIONS (${maxSessionsStr}), using default: 5`);
+    }
+  }
+  console.log(
+    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}, maxSessions=${maxSessions}`
+  );
+  return {
+    botToken,
+    groupId: parsedGroupId,
+    allowedUserIds,
+    maxSessions
+  };
+}
+
+// src/lib/config.ts
+var SERVICE_NAME = "TelegramRemote";
+
+// src/lib/logger.ts
+function log(client, level, message, extra) {
+  client.app.log({
+    body: {
+      service: SERVICE_NAME,
+      level,
+      message,
+      extra
+    }
+  }).catch(() => {
+  });
+}
+function createLogger(client) {
+  return {
+    debug: (message, extra) => log(client, "debug", message, extra),
+    info: (message, extra) => log(client, "info", message, extra),
+    warn: (message, extra) => log(client, "warn", message, extra),
+    error: (message, extra) => log(client, "error", message, extra)
+  };
+}
+
+// src/events/message-part-updated.ts
 var MAX_MESSAGE_SIZE = 5 * 1024 * 1024;
+async function handleMessagePartUpdated(event, context) {
+  const logger = createLogger(context.client);
+  const part = event.properties.part;
+  if (part.type !== "text") {
+    return;
+  }
+  const isAssistantMessage = context.messageTracker.isAssistant(part.messageID);
+  if (!isAssistantMessage) {
+    return;
+  }
+  const sessionId = part.sessionID;
+  const topicId = context.sessionStore.getTopicBySession(sessionId);
+  if (!topicId) {
+    logger.debug("No topic found for session", { sessionId });
+    return;
+  }
+  const delta = event.properties.delta;
+  if (delta) {
+    const currentContent = context.messageTracker.getContent(part.messageID) || "";
+    if (currentContent.length + delta.length > MAX_MESSAGE_SIZE) {
+      console.warn(
+        `[TelegramRemote] Message ${part.messageID} exceeded ${MAX_MESSAGE_SIZE} bytes. Truncating.`
+      );
+    } else {
+      context.messageTracker.updateContent(part.messageID, currentContent + delta);
+    }
+  }
+  const fullText = context.messageTracker.getContent(part.messageID) || "";
+  const statusMessageId = context.messageTracker.getStatusMessageId(part.messageID);
+  const hasInterval = context.messageTracker.getLatestUpdate(part.messageID) !== void 0;
+  if (statusMessageId && !hasInterval) {
+    console.log(
+      `[TelegramRemote] First update for message ${part.messageID}, updating status message`
+    );
+    try {
+      await context.bot.editMessage(topicId, statusMessageId, fullText || "Processing...");
+      context.messageTracker.setLatestUpdate(part.messageID, fullText);
+      let lastSentText = fullText;
+      const updateInterval = setInterval(async () => {
+        if (!context.messageTracker.isProcessingPrompt(part.messageID)) {
+          console.log(
+            `[TelegramRemote] Processing complete for message ${part.messageID}, stopping interval`
+          );
+          context.messageTracker.clearUpdateInterval(part.messageID);
+          return;
+        }
+        const currentLatest = context.messageTracker.getLatestUpdate(part.messageID);
+        if (currentLatest && currentLatest !== lastSentText) {
+          try {
+            await context.bot.editMessage(topicId, statusMessageId, currentLatest);
+            lastSentText = currentLatest;
+            console.log(`[TelegramRemote] Updated status message for ${part.messageID}`);
+          } catch (error) {
+            console.error(`[TelegramRemote] Failed to update status message:`, error);
+          }
+        }
+      }, 500);
+      context.messageTracker.setUpdateInterval(part.messageID, updateInterval);
+      console.log(`[TelegramRemote] Started update interval for message ${part.messageID}`);
+    } catch (error) {
+      console.error(`[TelegramRemote] Failed to update status message:`, error);
+    }
+  } else if (statusMessageId && hasInterval) {
+    console.log(
+      `[TelegramRemote] Subsequent update for message ${part.messageID}, updating latestUpdate`
+    );
+    context.messageTracker.setLatestUpdate(part.messageID, fullText);
+  }
+}
+
+// src/events/message-updated.ts
+async function handleMessageUpdated(event, context) {
+  const logger = createLogger(context.client);
+  const message = event.properties.info;
+  console.log(`[TelegramRemote] Message updated: ${message.id}, role: ${message.role}`);
+  if (message.role === "user") {
+    context.messageTracker.markAsUser(message.id);
+  } else if (message.role === "assistant") {
+    context.messageTracker.markAsAssistant(message.id);
+    const topicId = context.sessionStore.getTopicBySession(message.sessionID);
+    if (topicId) {
+      const promptMessageId = context.sessionStore.getPromptMessageId(topicId);
+      if (promptMessageId) {
+        context.messageTracker.setStatusMessageId(message.id, promptMessageId);
+        context.messageTracker.setProcessingPrompt(message.id, true);
+        context.sessionStore.clearPromptMessageId(topicId);
+        console.log(
+          `[TelegramRemote] Linked prompt message ${promptMessageId} to assistant message ${message.id}`
+        );
+      }
+    }
+    if (message.time?.completed) {
+      context.messageTracker.setProcessingPrompt(message.id, false);
+      context.messageTracker.clearUpdateInterval(message.id);
+      const content = context.messageTracker.getContent(message.id);
+      if (content) {
+        const lines = content.split("\n");
+        if (lines.length > 100) {
+          const topicId2 = context.sessionStore.getTopicBySession(message.sessionID);
+          if (topicId2) {
+            console.log(
+              `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as Markdown file.`
+            );
+            try {
+              await context.bot.sendDocument(topicId2, content, "response.md");
+            } catch (error) {
+              console.error("[TelegramRemote] Failed to send document:", error);
+              logger.error("Failed to send document", { error: String(error) });
+            }
+          }
+        }
+        context.messageTracker.clearAllTracking(message.id);
+      }
+    }
+  }
+}
+
+// src/events/session-created.ts
+async function handleSessionCreated(event, context) {
+  const sessionId = event.properties.info.id;
+  const topicId = context.sessionStore.getTopicBySession(sessionId);
+  console.log(`[TelegramRemote] Session created: ${sessionId.slice(0, 8)}, topicId: ${topicId}`);
+  if (topicId) {
+    await context.bot.sendMessage(topicId, `\u2705 Session initialized: ${sessionId.slice(0, 8)}`);
+  }
+}
+
+// src/message-tracker.ts
+var MessageTracker = class {
+  userMessages = /* @__PURE__ */ new Set();
+  assistantMessages = /* @__PURE__ */ new Set();
+  messageContent = /* @__PURE__ */ new Map();
+  statusMessageIds = /* @__PURE__ */ new Map();
+  // messageId -> telegram message ID
+  processingPrompts = /* @__PURE__ */ new Map();
+  // messageId -> processing flag
+  latestUpdates = /* @__PURE__ */ new Map();
+  // messageId -> latest update text
+  updateIntervals = /* @__PURE__ */ new Map();
+  // messageId -> interval handle
+  markAsUser(messageId) {
+    this.userMessages.add(messageId);
+    this.assistantMessages.delete(messageId);
+    this.messageContent.delete(messageId);
+  }
+  markAsAssistant(messageId) {
+    this.assistantMessages.add(messageId);
+    this.userMessages.delete(messageId);
+  }
+  isAssistant(messageId) {
+    return this.assistantMessages.has(messageId);
+  }
+  isUser(messageId) {
+    return this.userMessages.has(messageId);
+  }
+  updateContent(messageId, content) {
+    this.messageContent.set(messageId, content);
+  }
+  getContent(messageId) {
+    return this.messageContent.get(messageId);
+  }
+  clearContent(messageId) {
+    this.messageContent.delete(messageId);
+  }
+  setStatusMessageId(messageId, telegramMessageId) {
+    this.statusMessageIds.set(messageId, telegramMessageId);
+  }
+  getStatusMessageId(messageId) {
+    return this.statusMessageIds.get(messageId);
+  }
+  setProcessingPrompt(messageId, processing) {
+    this.processingPrompts.set(messageId, processing);
+  }
+  isProcessingPrompt(messageId) {
+    return this.processingPrompts.get(messageId) || false;
+  }
+  setLatestUpdate(messageId, text) {
+    this.latestUpdates.set(messageId, text);
+  }
+  getLatestUpdate(messageId) {
+    return this.latestUpdates.get(messageId);
+  }
+  setUpdateInterval(messageId, interval) {
+    this.updateIntervals.set(messageId, interval);
+  }
+  clearUpdateInterval(messageId) {
+    const interval = this.updateIntervals.get(messageId);
+    if (interval) {
+      clearInterval(interval);
+      this.updateIntervals.delete(messageId);
+    }
+  }
+  clearAllTracking(messageId) {
+    this.clearUpdateInterval(messageId);
+    this.statusMessageIds.delete(messageId);
+    this.processingPrompts.delete(messageId);
+    this.latestUpdates.delete(messageId);
+    this.clearContent(messageId);
+  }
+};
+
+// src/session-store.ts
+var SessionStore = class {
+  topicToSession = /* @__PURE__ */ new Map();
+  sessionToTopic = /* @__PURE__ */ new Map();
+  topicToPromptMessageId = /* @__PURE__ */ new Map();
+  // topicId -> Telegram message ID
+  create(topicId, sessionId) {
+    this.topicToSession.set(topicId, sessionId);
+    this.sessionToTopic.set(sessionId, topicId);
+  }
+  getSessionByTopic(topicId) {
+    return this.topicToSession.get(topicId);
+  }
+  getTopicBySession(sessionId) {
+    return this.sessionToTopic.get(sessionId);
+  }
+  has(topicId) {
+    return this.topicToSession.has(topicId);
+  }
+  getAllTopicIds() {
+    return Array.from(this.topicToSession.keys());
+  }
+  setPromptMessageId(topicId, messageId) {
+    this.topicToPromptMessageId.set(topicId, messageId);
+  }
+  getPromptMessageId(topicId) {
+    return this.topicToPromptMessageId.get(topicId);
+  }
+  clearPromptMessageId(topicId) {
+    this.topicToPromptMessageId.delete(topicId);
+  }
+  clearAll() {
+    this.topicToSession.clear();
+    this.sessionToTopic.clear();
+    this.topicToPromptMessageId.clear();
+  }
+};
+
+// src/telegram-remote.ts
 var TelegramRemote = async ({ client }) => {
   console.log("[TelegramRemote] Plugin initialization started");
   const logger = createLogger(client);
@@ -787,140 +906,23 @@ var TelegramRemote = async ({ client }) => {
     }
   });
   console.log("[TelegramRemote] Plugin initialization complete, returning event handler");
+  const eventContext = {
+    client,
+    bot,
+    sessionStore,
+    messageTracker
+  };
   return {
     event: async ({ event }) => {
       console.log(`[TelegramRemote] Event received: ${event.type}`);
       if (event.type === "session.created") {
-        const sessionId = event.properties.info.id;
-        const topicId = sessionStore.getTopicBySession(sessionId);
-        console.log(
-          `[TelegramRemote] Session created: ${sessionId.slice(0, 8)}, topicId: ${topicId}`
-        );
-        if (topicId) {
-          await bot.sendMessage(topicId, `\u2705 Session initialized: ${sessionId.slice(0, 8)}`);
-        }
+        await handleSessionCreated(event, eventContext);
       }
       if (event.type === "message.updated") {
-        const message = event.properties.info;
-        console.log(`[TelegramRemote] Message updated: ${message.id}, role: ${message.role}`);
-        if (message.role === "user") {
-          messageTracker.markAsUser(message.id);
-        } else if (message.role === "assistant") {
-          messageTracker.markAsAssistant(message.id);
-          const topicId = sessionStore.getTopicBySession(message.sessionID);
-          if (topicId) {
-            const promptMessageId = sessionStore.getPromptMessageId(topicId);
-            if (promptMessageId) {
-              messageTracker.setStatusMessageId(message.id, promptMessageId);
-              messageTracker.setProcessingPrompt(message.id, true);
-              sessionStore.clearPromptMessageId(topicId);
-              console.log(
-                `[TelegramRemote] Linked prompt message ${promptMessageId} to assistant message ${message.id}`
-              );
-            }
-          }
-          if (message.time?.completed) {
-            messageTracker.setProcessingPrompt(message.id, false);
-            messageTracker.clearUpdateInterval(message.id);
-            const content = messageTracker.getContent(message.id);
-            if (content) {
-              const lines = content.split("\n");
-              if (lines.length > 100) {
-                const topicId2 = sessionStore.getTopicBySession(message.sessionID);
-                if (topicId2) {
-                  console.log(
-                    `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as Markdown file.`
-                  );
-                  try {
-                    await bot.sendDocument(topicId2, content, "response.md");
-                  } catch (error) {
-                    console.error("[TelegramRemote] Failed to send document:", error);
-                    logger.error("Failed to send document", { error: String(error) });
-                  }
-                }
-              }
-              messageTracker.clearAllTracking(message.id);
-            }
-          }
-        }
+        await handleMessageUpdated(event, eventContext);
       }
       if (event.type === "message.part.updated") {
-        const part = event.properties.part;
-        if (part.type !== "text") {
-          return;
-        }
-        const isAssistantMessage = messageTracker.isAssistant(part.messageID);
-        if (!isAssistantMessage) {
-          return;
-        }
-        const sessionId = part.sessionID;
-        const topicId = sessionStore.getTopicBySession(sessionId);
-        if (!topicId) {
-          logger.debug("No topic found for session", { sessionId });
-          return;
-        }
-        const delta = event.properties.delta;
-        if (delta) {
-          const currentContent = messageTracker.getContent(part.messageID) || "";
-          if (currentContent.length + delta.length > MAX_MESSAGE_SIZE) {
-            console.warn(
-              `[TelegramRemote] Message ${part.messageID} exceeded ${MAX_MESSAGE_SIZE} bytes. Truncating.`
-            );
-          } else {
-            messageTracker.updateContent(part.messageID, currentContent + delta);
-          }
-        }
-        const fullText = messageTracker.getContent(part.messageID) || "";
-        const statusMessageId = messageTracker.getStatusMessageId(part.messageID);
-        const hasInterval = messageTracker.getLatestUpdate(part.messageID) !== void 0;
-        if (statusMessageId && !hasInterval) {
-          console.log(
-            `[TelegramRemote] First update for message ${part.messageID}, updating status message`
-          );
-          try {
-            await bot.editMessage(topicId, statusMessageId, fullText || "Processing...");
-            messageTracker.setLatestUpdate(part.messageID, fullText);
-            let lastSentText = fullText;
-            const updateInterval = setInterval(async () => {
-              if (!messageTracker.isProcessingPrompt(part.messageID)) {
-                console.log(
-                  `[TelegramRemote] Processing complete for message ${part.messageID}, stopping interval`
-                );
-                messageTracker.clearUpdateInterval(part.messageID);
-                return;
-              }
-              const currentLatest = messageTracker.getLatestUpdate(part.messageID);
-              if (currentLatest && currentLatest !== lastSentText) {
-                try {
-                  await bot.editMessage(topicId, statusMessageId, currentLatest);
-                  lastSentText = currentLatest;
-                  console.log(
-                    `[TelegramRemote] Updated status message for ${part.messageID}`
-                  );
-                } catch (error) {
-                  console.error(
-                    `[TelegramRemote] Failed to update status message:`,
-                    error
-                  );
-                }
-              }
-            }, 500);
-            messageTracker.setUpdateInterval(part.messageID, updateInterval);
-            console.log(
-              `[TelegramRemote] Started update interval for message ${part.messageID}`
-            );
-          } catch (error) {
-            console.error(
-              `[TelegramRemote] Failed to update status message:`,
-              error
-            );
-          }
-        } else if (statusMessageId && hasInterval) {
-          console.log(
-            `[TelegramRemote] Subsequent update for message ${part.messageID}, updating latestUpdate`
-          );
-          messageTracker.setLatestUpdate(part.messageID, fullText);
-        }
+        await handleMessagePartUpdated(event, eventContext);
       }
     }
   };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { config as loadEnv } from "dotenv";
 import { resolve } from "node:path";
+import { config as loadEnv } from "dotenv";
 import { Bot } from "grammy";
 
 // Load environment variables from .env in project root

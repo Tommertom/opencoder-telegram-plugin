@@ -1,4 +1,4 @@
-import { Bot } from "grammy";
+import type { Bot } from "grammy";
 import type { TelegramQueue } from "./telegram-queue.js";
 
 /**

@@ -1,14 +1,14 @@
 import { Bot, type Context, InputFile } from "grammy";
-import type { OpencodeClient } from "./lib/types.js";
-import type { Logger } from "./lib/logger.js";
-import type { Config } from "./config.js";
-import { SessionStore } from "./session-store.js";
-import { sendTemporaryMessage } from "./lib/utils.js";
-import { TelegramQueue } from "./lib/telegram-queue.js";
-import { createNewCommandHandler } from "./commands/new.js";
 import { createClearTopicsCommandHandler } from "./commands/cleartopics.js";
 import { createDeleteSessionsCommandHandler } from "./commands/deletesessions.js";
 import { createMessageTextHandler } from "./commands/message-text.command.js";
+import { createNewCommandHandler } from "./commands/new.js";
+import type { Config } from "./config.js";
+import type { Logger } from "./lib/logger.js";
+import { TelegramQueue } from "./lib/telegram-queue.js";
+import type { OpencodeClient } from "./lib/types.js";
+import { sendTemporaryMessage } from "./lib/utils.js";
+import type { SessionStore } from "./session-store.js";
 
 export interface TelegramBotManager {
   start(): Promise<void>;
@@ -121,15 +121,11 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
     },
 
     async editMessage(topicId: number, messageId: number, text: string) {
-      console.log(`[Bot] editMessage in topic ${topicId}, message ${messageId}: "${text.slice(0, 50)}..."`);
-      // Use queue to avoid rate limiting
-      await queue.enqueue(() =>
-        bot.api.editMessageText(
-          config.groupId,
-          messageId,
-          text,
-        ),
+      console.log(
+        `[Bot] editMessage in topic ${topicId}, message ${messageId}: "${text.slice(0, 50)}..."`,
       );
+      // Use queue to avoid rate limiting
+      await queue.enqueue(() => bot.api.editMessageText(config.groupId, messageId, text));
     },
 
     async sendDocument(topicId: number, document: string | Uint8Array, filename: string) {

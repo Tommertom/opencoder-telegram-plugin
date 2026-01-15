@@ -1,11 +1,15 @@
 import type { Plugin } from "@opencode-ai/plugin";
-import { loadConfig, type Config } from "./config.js";
-import { createLogger } from "./lib/logger.js";
-import { SessionStore } from "./session-store.js";
-import { MessageTracker } from "./message-tracker.js";
 import { createTelegramBot } from "./bot.js";
-
-const MAX_MESSAGE_SIZE = 5 * 1024 * 1024; // 5MB limit for in-memory message buffering
+import { type Config, loadConfig } from "./config.js";
+import {
+  type EventHandlerContext,
+  handleMessagePartUpdated,
+  handleMessageUpdated,
+  handleSessionCreated,
+} from "./events/index.js";
+import { createLogger } from "./lib/logger.js";
+import { MessageTracker } from "./message-tracker.js";
+import { SessionStore } from "./session-store.js";
 
 export const TelegramRemote: Plugin = async ({ client }) => {
   console.log("[TelegramRemote] Plugin initialization started");
@@ -166,175 +170,28 @@ export const TelegramRemote: Plugin = async ({ client }) => {
 
   console.log("[TelegramRemote] Plugin initialization complete, returning event handler");
 
+  // Create event handler context
+  const eventContext: EventHandlerContext = {
+    client,
+    bot,
+    sessionStore,
+    messageTracker,
+  };
+
   return {
     event: async ({ event }) => {
       console.log(`[TelegramRemote] Event received: ${event.type}`);
 
       if (event.type === "session.created") {
-        const sessionId = event.properties.info.id;
-        const topicId = sessionStore.getTopicBySession(sessionId);
-        console.log(
-          `[TelegramRemote] Session created: ${sessionId.slice(0, 8)}, topicId: ${topicId}`,
-        );
-
-        if (topicId) {
-          await bot.sendMessage(topicId, `✅ Session initialized: ${sessionId.slice(0, 8)}`);
-        }
+        await handleSessionCreated(event, eventContext);
       }
 
       if (event.type === "message.updated") {
-        const message = event.properties.info;
-        console.log(`[TelegramRemote] Message updated: ${message.id}, role: ${message.role}`);
-        if (message.role === "user") {
-          messageTracker.markAsUser(message.id);
-        } else if (message.role === "assistant") {
-          messageTracker.markAsAssistant(message.id);
-
-          // Link the prompt message ID to this assistant message
-          const topicId = sessionStore.getTopicBySession(message.sessionID);
-          if (topicId) {
-            const promptMessageId = sessionStore.getPromptMessageId(topicId);
-            if (promptMessageId) {
-              messageTracker.setStatusMessageId(message.id, promptMessageId);
-              messageTracker.setProcessingPrompt(message.id, true);
-              sessionStore.clearPromptMessageId(topicId); // Clear it so it's not reused
-              console.log(
-                `[TelegramRemote] Linked prompt message ${promptMessageId} to assistant message ${message.id}`,
-              );
-            }
-          }
-
-          // Check if message is completed
-          if (message.time?.completed) {
-            // Stop processing and clean up interval
-            messageTracker.setProcessingPrompt(message.id, false);
-            messageTracker.clearUpdateInterval(message.id);
-
-            const content = messageTracker.getContent(message.id);
-            if (content) {
-              const lines = content.split("\n");
-              if (lines.length > 100) {
-                const topicId = sessionStore.getTopicBySession(message.sessionID);
-                if (topicId) {
-                  console.log(
-                    `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as Markdown file.`,
-                  );
-                  try {
-                    await bot.sendDocument(topicId, content, "response.md");
-                  } catch (error) {
-                    console.error("[TelegramRemote] Failed to send document:", error);
-                    logger.error("Failed to send document", { error: String(error) });
-                  }
-                }
-              }
-              // Clean up all tracking for this message
-              messageTracker.clearAllTracking(message.id);
-            }
-          }
-        }
+        await handleMessageUpdated(event, eventContext);
       }
 
       if (event.type === "message.part.updated") {
-        const part = event.properties.part;
-        if (part.type !== "text") {
-          return;
-        }
-
-        const isAssistantMessage = messageTracker.isAssistant(part.messageID);
-        if (!isAssistantMessage) {
-          return;
-        }
-
-        const sessionId = part.sessionID;
-        const topicId = sessionStore.getTopicBySession(sessionId);
-
-        if (!topicId) {
-          logger.debug("No topic found for session", { sessionId });
-          return;
-        }
-
-        // First, accumulate the delta if present
-        const delta = event.properties.delta;
-        if (delta) {
-          const currentContent = messageTracker.getContent(part.messageID) || "";
-
-          if (currentContent.length + delta.length > MAX_MESSAGE_SIZE) {
-            console.warn(
-              `[TelegramRemote] Message ${part.messageID} exceeded ${MAX_MESSAGE_SIZE} bytes. Truncating.`,
-            );
-            // Stop accumulating to prevent memory exhaustion
-          } else {
-            messageTracker.updateContent(part.messageID, currentContent + delta);
-          }
-        }
-
-        // Get the accumulated message text so far (after adding the delta)
-        const fullText = messageTracker.getContent(part.messageID) || "";
-
-        // Check if this is the first update for this message
-        const statusMessageId = messageTracker.getStatusMessageId(part.messageID);
-        const hasInterval = messageTracker.getLatestUpdate(part.messageID) !== undefined;
-
-        if (statusMessageId && !hasInterval) {
-          // First update - update the status message with full text and start interval
-          console.log(
-            `[TelegramRemote] First update for message ${part.messageID}, updating status message`,
-          );
-
-          try {
-            await bot.editMessage(topicId, statusMessageId, fullText || "Processing...");
-            messageTracker.setLatestUpdate(part.messageID, fullText);
-
-            // Track the last sent text to detect changes
-            let lastSentText = fullText;
-
-            // Start interval to check for updates every 500ms
-            const updateInterval = setInterval(async () => {
-              if (!messageTracker.isProcessingPrompt(part.messageID)) {
-                // Stop interval if processing is done
-                console.log(
-                  `[TelegramRemote] Processing complete for message ${part.messageID}, stopping interval`,
-                );
-                messageTracker.clearUpdateInterval(part.messageID);
-                return;
-              }
-
-              // Check if latestUpdate has changed since last send
-              const currentLatest = messageTracker.getLatestUpdate(part.messageID);
-              if (currentLatest && currentLatest !== lastSentText) {
-                // Update the message with the latest text
-                try {
-                  await bot.editMessage(topicId, statusMessageId, currentLatest);
-                  lastSentText = currentLatest;
-                  console.log(
-                    `[TelegramRemote] Updated status message for ${part.messageID}`,
-                  );
-                } catch (error) {
-                  console.error(
-                    `[TelegramRemote] Failed to update status message:`,
-                    error,
-                  );
-                }
-              }
-            }, 500);
-
-            messageTracker.setUpdateInterval(part.messageID, updateInterval);
-            console.log(
-              `[TelegramRemote] Started update interval for message ${part.messageID}`,
-            );
-          } catch (error) {
-            console.error(
-              `[TelegramRemote] Failed to update status message:`,
-              error,
-            );
-          }
-        } else if (statusMessageId && hasInterval) {
-          // Subsequent update - just update the latestUpdate
-          console.log(
-            `[TelegramRemote] Subsequent update for message ${part.messageID}, updating latestUpdate`,
-          );
-          messageTracker.setLatestUpdate(part.messageID, fullText);
-        }
+        await handleMessagePartUpdated(event, eventContext);
       }
     },
   };
