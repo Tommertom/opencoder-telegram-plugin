@@ -1,6 +1,6 @@
 import { Bot, type Context, InputFile } from "grammy";
-import { createClearTopicsCommandHandler } from "./commands/cleartopics.js";
 import { createDeleteSessionsCommandHandler } from "./commands/deletesessions.js";
+import { createHelpCommandHandler } from "./commands/help.js";
 import { createMessageTextHandler } from "./commands/message-text.command.js";
 import { createNewCommandHandler } from "./commands/new.js";
 import type { Config } from "./config.js";
@@ -13,12 +13,10 @@ import type { SessionStore } from "./session-store.js";
 export interface TelegramBotManager {
   start(): Promise<void>;
   stop(): Promise<void>;
-  sendMessage(topicId: number, text: string): Promise<void>;
-  editMessage(topicId: number, messageId: number, text: string): Promise<void>;
-  getForumTopics(groupId: number): Promise<any>;
-  createForumTopic(groupId: number, name: string): Promise<any>;
+  sendMessage(text: string): Promise<void>;
+  editMessage(messageId: number, text: string): Promise<void>;
   queue: TelegramQueue;
-  sendDocument(topicId: number, document: string | Uint8Array, filename: string): Promise<void>;
+  sendDocument(document: string | Uint8Array, filename: string): Promise<void>;
 }
 
 let botInstance: Bot | null = null;
@@ -61,8 +59,12 @@ export function createTelegramBot(
     await next();
   });
 
+  // Create the manager and pass the manager into command handlers so they
+  // can use the convenience methods (createForumTopic, deleteForumTopic, getForumTopics, sendMessage, etc.)
+  const manager = createBotManager(bot, config, queue);
+
   const commandDeps = {
-    bot,
+    bot: manager,
     config,
     client,
     logger,
@@ -71,8 +73,8 @@ export function createTelegramBot(
   };
 
   bot.command("new", createNewCommandHandler(commandDeps));
-  bot.command("cleartopics", createClearTopicsCommandHandler(commandDeps));
   bot.command("deletesessions", createDeleteSessionsCommandHandler(commandDeps));
+  bot.command("help", createHelpCommandHandler(commandDeps));
 
   bot.on("message:text", createMessageTextHandler(commandDeps));
 
@@ -81,8 +83,8 @@ export function createTelegramBot(
     logger.error("Bot error", { error: String(error) });
   });
 
-  console.log("[Bot] All handlers registered, creating bot manager");
-  return createBotManager(bot, config, queue);
+  console.log("[Bot] All handlers registered, returning bot manager");
+  return manager;
 }
 
 function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): TelegramBotManager {
@@ -110,57 +112,26 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
       console.log("[Bot] Bot stopped and instance cleared");
     },
 
-    async sendMessage(topicId: number, text: string) {
-      console.log(`[Bot] sendMessage to topic ${topicId}: "${text.slice(0, 50)}..."`);
+    async sendMessage(text: string) {
+      console.log(`[Bot] sendMessage: "${text.slice(0, 50)}..."`);
       // Use queue to avoid rate limiting
-      await queue.enqueue(() =>
-        bot.api.sendMessage(config.groupId, text, {
-          message_thread_id: topicId,
-        }),
-      );
+      await queue.enqueue(() => bot.api.sendMessage(config.groupId, text));
     },
 
-    async editMessage(topicId: number, messageId: number, text: string) {
-      console.log(
-        `[Bot] editMessage in topic ${topicId}, message ${messageId}: "${text.slice(0, 50)}..."`,
-      );
+    async editMessage(messageId: number, text: string) {
+      console.log(`[Bot] editMessage ${messageId}: "${text.slice(0, 50)}..."`);
       // Use queue to avoid rate limiting
       await queue.enqueue(() => bot.api.editMessageText(config.groupId, messageId, text));
     },
 
-    async sendDocument(topicId: number, document: string | Uint8Array, filename: string) {
-      console.log(`[Bot] sendDocument to topic ${topicId}: filename="${filename}"`);
+    async sendDocument(document: string | Uint8Array, filename: string) {
+      console.log(`[Bot] sendDocument: filename="${filename}"`);
       await queue.enqueue(() =>
         bot.api.sendDocument(
           config.groupId,
           new InputFile(typeof document === "string" ? Buffer.from(document) : document, filename),
-          {
-            message_thread_id: topicId,
-          },
         ),
       );
-    },
-
-    async getForumTopics(groupId: number) {
-      console.log(`[Bot] getForumTopics called for group ${groupId}`);
-      try {
-        // Note: Telegram Bot API doesn't provide a direct method to list all forum topics
-        // Topics are managed through message_thread_id when messages are sent
-        // We'll return an empty list and create topics on-demand instead
-        console.log("[Bot] Forum topics listing not available via Bot API, returning empty list");
-        return { topics: [] };
-      } catch (error) {
-        console.error("[Bot] getForumTopics error:", error);
-        return { error: String(error), topics: [] };
-      }
-    },
-
-    async createForumTopic(groupId: number, name: string) {
-      console.log(`[Bot] createForumTopic called: "${name}"`);
-      // Use queue to avoid rate limiting
-      const result = await queue.enqueue(() => bot.api.createForumTopic(groupId, name));
-      console.log(`[Bot] Created forum topic with ID: ${result.message_thread_id}`);
-      return result;
     },
 
     queue,
