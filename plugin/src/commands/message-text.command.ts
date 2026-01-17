@@ -1,4 +1,5 @@
 import type { Context } from "grammy";
+import { getDefaultKeyboardOptions } from "../lib/utils.js";
 import type { CommandDeps } from "./types.js";
 
 export function createMessageTextHandler({ config, client, logger, sessionStore }: CommandDeps) {
@@ -14,7 +15,7 @@ export function createMessageTextHandler({ config, client, logger, sessionStore 
         const createSessionResponse = await client.session.create({ body: {} });
         if (createSessionResponse.error) {
           logger.error("Failed to create session", { error: createSessionResponse.error });
-          await ctx.reply("❌ Failed to initialize session");
+          await ctx.reply("❌ Failed to initialize session", getDefaultKeyboardOptions());
           return;
         }
 
@@ -26,7 +27,7 @@ export function createMessageTextHandler({ config, client, logger, sessionStore 
         });
       } catch (error) {
         logger.error("Failed to create session", { error: String(error) });
-        await ctx.reply("❌ Failed to initialize session");
+        await ctx.reply("❌ Failed to initialize session", getDefaultKeyboardOptions());
         return;
       }
     }
@@ -46,7 +47,7 @@ export function createMessageTextHandler({ config, client, logger, sessionStore 
           error: response.error,
           sessionId,
         });
-        await ctx.reply("❌ Failed to process message");
+        await ctx.reply("❌ Failed to process message", getDefaultKeyboardOptions());
         return;
       }
 
@@ -58,7 +59,7 @@ export function createMessageTextHandler({ config, client, logger, sessionStore 
         error: String(error),
         sessionId,
       });
-      await ctx.reply("❌ Failed to process message");
+      await ctx.reply("❌ Failed to process message", getDefaultKeyboardOptions());
     }
   };
 }

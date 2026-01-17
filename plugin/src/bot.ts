@@ -1,16 +1,19 @@
-import { Bot, type Context, InputFile } from "grammy";
+import { Bot, type Context, InputFile, Keyboard } from "grammy";
 import { createAudioMessageHandler } from "./commands/audio-message.command.js";
 import {
   createAgentsCommandHandler,
   createDeleteSessionsCommandHandler,
+  createEscCommandHandler,
   createHelpCommandHandler,
   createMessageTextHandler,
   createNewCommandHandler,
   createSessionsCommandHandler,
+  createTabCommandHandler,
 } from "./commands/index.js";
 import { createQuestionCallbackHandler } from "./commands/question-callback.command.js";
 import type { Config } from "./config.js";
 import type { GlobalStateStore } from "./global-state-store.js";
+import { createDefaultKeyboard } from "./lib/keyboard.js";
 import type { Logger } from "./lib/logger.js";
 import { TelegramQueue } from "./lib/telegram-queue.js";
 import type { OpencodeClient } from "./lib/types.js";
@@ -90,6 +93,8 @@ export function createTelegramBot(
   bot.command("sessions", createSessionsCommandHandler(commandDeps));
   bot.command("agents", createAgentsCommandHandler(commandDeps));
   bot.command("help", createHelpCommandHandler(commandDeps));
+  bot.command("tab", createTabCommandHandler(commandDeps));
+  bot.command("esc", createEscCommandHandler(commandDeps));
 
   bot.on("message:text", createMessageTextHandler(commandDeps));
   bot.on("message:voice", createAudioMessageHandler(commandDeps));
@@ -134,8 +139,15 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
 
     async sendMessage(text: string, options?: any) {
       console.log(`[Bot] sendMessage: "${text.slice(0, 50)}..."`);
+      // Add default keyboard if no reply_markup is provided
+      const mergedOptions = {
+        ...options,
+        reply_markup: options?.reply_markup || createDefaultKeyboard(),
+      };
       // Use queue to avoid rate limiting
-      const result = await queue.enqueue(() => bot.api.sendMessage(config.groupId, text, options));
+      const result = await queue.enqueue(() =>
+        bot.api.sendMessage(config.groupId, text, mergedOptions),
+      );
       return { message_id: result.message_id };
     },
 

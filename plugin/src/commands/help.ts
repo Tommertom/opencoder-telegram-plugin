@@ -1,4 +1,5 @@
 import type { Context } from "grammy";
+import { getDefaultKeyboardOptions } from "../lib/utils.js";
 import type { CommandDeps } from "./types.js";
 
 export function createHelpCommandHandler({ config }: CommandDeps) {
@@ -19,16 +20,19 @@ export function createHelpCommandHandler({ config }: CommandDeps) {
       "\n" +
       "/new - Create a new OpenCode session.\n" +
       "/deletesessions - Delete all OpenCode sessions.\n" +
+      "/tab - Send a Tab key to the active session.\n" +
+      "/esc - Send an Escape key to the active session.\n" +
       "/help - Show this help message.\n" +
       "\n" +
       "Usage:\n" +
       "- Use /new to create a new session.\n" +
       "- Send messages in this chat to interact with the active session.\n" +
       "- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n" +
+      "- Use Tab and Esc buttons or commands to send special keys.\n" +
       "- Admin-only commands (like /deletesessions) are restricted to configured users.\n" +
       "\n" +
       "Note: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
 
-    await ctx.reply(helpMessage);
+    await ctx.reply(helpMessage, getDefaultKeyboardOptions());
   };
 }

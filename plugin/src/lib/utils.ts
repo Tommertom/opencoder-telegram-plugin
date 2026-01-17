@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Bot } from "grammy";
+import { createDefaultKeyboard } from "./keyboard.js";
 import type { TelegramQueue } from "./telegram-queue.js";
 
 /**
@@ -66,4 +67,13 @@ export async function sendTemporaryMessage(
   } catch (error) {
     console.error("Failed to send temporary message", { error: String(error) });
   }
+}
+
+/**
+ * Gets the default reply keyboard options with Tab and Esc buttons
+ */
+export function getDefaultKeyboardOptions() {
+  return {
+    reply_markup: createDefaultKeyboard(),
+  };
 }

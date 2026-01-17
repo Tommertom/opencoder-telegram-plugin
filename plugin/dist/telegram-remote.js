@@ -277,6 +277,101 @@ function createDeleteSessionsCommandHandler({
   };
 }
 
+// src/lib/utils.ts
+import { mkdirSync, writeFileSync } from "fs";
+import { join as join2 } from "path";
+
+// src/lib/keyboard.ts
+import { Keyboard } from "grammy";
+function createDefaultKeyboard() {
+  const keyboard = new Keyboard().text("/tab").text("/esc").resized().persistent();
+  return keyboard;
+}
+
+// src/lib/utils.ts
+function writeEventToDebugFile(event, overwrite = false, excludeEvents = []) {
+  if (excludeEvents.includes(event.type)) {
+    return;
+  }
+  try {
+    const debugDir = join2(process.cwd(), "debug");
+    mkdirSync(debugDir, { recursive: true });
+    const filename = overwrite ? `${event.type}.json` : `${Date.now()}.${event.type}.json`;
+    const filepath = join2(debugDir, filename);
+    writeFileSync(filepath, JSON.stringify(event, null, 2), { flag: "w" });
+  } catch (error) {
+    console.error(`[TelegramRemote] Failed to write event to file:`, error);
+  }
+}
+async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
+  try {
+    const sendFn = () => bot.api.sendMessage(chatId, text);
+    const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
+    const messageId = sentMessage.message_id;
+    setTimeout(async () => {
+      try {
+        const deleteFn = () => bot.api.deleteMessage(chatId, messageId);
+        if (queue) {
+          await queue.enqueue(deleteFn);
+        } else {
+          await deleteFn();
+        }
+      } catch (error) {
+        console.warn("Failed to delete temporary message", { error: String(error), messageId });
+      }
+    }, durationMs);
+  } catch (error) {
+    console.error("Failed to send temporary message", { error: String(error) });
+  }
+}
+function getDefaultKeyboardOptions() {
+  return {
+    reply_markup: createDefaultKeyboard()
+  };
+}
+
+// src/commands/esc.ts
+function createEscCommandHandler({ config, client, logger, sessionStore }) {
+  return async (ctx) => {
+    console.log("[Bot] /esc command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    const userId = ctx.from?.id;
+    if (!userId || !config.allowedUserIds.includes(userId)) {
+      console.log(`[Bot] /esc attempt by unauthorized user ${userId}`);
+      await ctx.reply("You are not authorized to use this bot.", getDefaultKeyboardOptions());
+      return;
+    }
+    const sessionId = sessionStore.getActiveSession();
+    if (!sessionId) {
+      await ctx.reply("\u274C No active session. Use /new to create one.", getDefaultKeyboardOptions());
+      return;
+    }
+    try {
+      const response = await client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          parts: [{ type: "text", text: "\x1B" }]
+        }
+      });
+      if (response.error) {
+        logger.error("Failed to send escape to OpenCode", {
+          error: response.error,
+          sessionId
+        });
+        await ctx.reply("\u274C Failed to send escape", getDefaultKeyboardOptions());
+        return;
+      }
+      logger.debug("Sent escape to OpenCode", { sessionId });
+    } catch (error) {
+      logger.error("Failed to send escape to OpenCode", {
+        error: String(error),
+        sessionId
+      });
+      await ctx.reply("\u274C Failed to send escape", getDefaultKeyboardOptions());
+    }
+  };
+}
+
 // src/commands/help.ts
 function createHelpCommandHandler({ config }) {
   return async (ctx) => {
@@ -288,8 +383,8 @@ function createHelpCommandHandler({ config }) {
       await ctx.reply("You are not authorized to use this bot.");
       return;
     }
-    const helpMessage = "Available commands:\n\n/new - Create a new OpenCode session.\n/deletesessions - Delete all OpenCode sessions.\n/help - Show this help message.\n\nUsage:\n- Use /new to create a new session.\n- Send messages in this chat to interact with the active session.\n- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n- Admin-only commands (like /deletesessions) are restricted to configured users.\n\nNote: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
-    await ctx.reply(helpMessage);
+    const helpMessage = "Available commands:\n\n/new - Create a new OpenCode session.\n/deletesessions - Delete all OpenCode sessions.\n/tab - Send a Tab key to the active session.\n/esc - Send an Escape key to the active session.\n/help - Show this help message.\n\nUsage:\n- Use /new to create a new session.\n- Send messages in this chat to interact with the active session.\n- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n- Use Tab and Esc buttons or commands to send special keys.\n- Admin-only commands (like /deletesessions) are restricted to configured users.\n\nNote: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
+    await ctx.reply(helpMessage, getDefaultKeyboardOptions());
   };
 }
 
@@ -305,7 +400,7 @@ function createMessageTextHandler({ config, client, logger, sessionStore }) {
         const createSessionResponse = await client.session.create({ body: {} });
         if (createSessionResponse.error) {
           logger.error("Failed to create session", { error: createSessionResponse.error });
-          await ctx.reply("\u274C Failed to initialize session");
+          await ctx.reply("\u274C Failed to initialize session", getDefaultKeyboardOptions());
           return;
         }
         sessionId = createSessionResponse.data.id;
@@ -315,7 +410,7 @@ function createMessageTextHandler({ config, client, logger, sessionStore }) {
         });
       } catch (error) {
         logger.error("Failed to create session", { error: String(error) });
-        await ctx.reply("\u274C Failed to initialize session");
+        await ctx.reply("\u274C Failed to initialize session", getDefaultKeyboardOptions());
         return;
       }
     }
@@ -332,7 +427,7 @@ function createMessageTextHandler({ config, client, logger, sessionStore }) {
           error: response.error,
           sessionId
         });
-        await ctx.reply("\u274C Failed to process message");
+        await ctx.reply("\u274C Failed to process message", getDefaultKeyboardOptions());
         return;
       }
       logger.debug("Forwarded message to OpenCode", {
@@ -343,7 +438,7 @@ function createMessageTextHandler({ config, client, logger, sessionStore }) {
         error: String(error),
         sessionId
       });
-      await ctx.reply("\u274C Failed to process message");
+      await ctx.reply("\u274C Failed to process message", getDefaultKeyboardOptions());
     }
   };
 }
@@ -363,7 +458,7 @@ function createNewCommandHandler({
       const createSessionResponse = await client.session.create({ body: {} });
       if (createSessionResponse.error) {
         logger.error("Failed to create session", { error: createSessionResponse.error });
-        await ctx.reply("\u274C Failed to create session");
+        await ctx.reply("\u274C Failed to create session", getDefaultKeyboardOptions());
         return;
       }
       const sessionId = createSessionResponse.data.id;
@@ -374,7 +469,7 @@ function createNewCommandHandler({
       await bot.sendMessage(`\u2705 Session created: ${sessionId}`);
     } catch (error) {
       logger.error("Failed to create new session", { error: String(error) });
-      await ctx.reply("\u274C Failed to create session");
+      await ctx.reply("\u274C Failed to create session", getDefaultKeyboardOptions());
     }
   };
 }
@@ -407,6 +502,48 @@ ${sessionList}`;
     } catch (error) {
       logger.error("Failed to list sessions", { error: String(error) });
       await bot.sendTemporaryMessage("\u274C Failed to list sessions");
+    }
+  };
+}
+
+// src/commands/tab.ts
+function createTabCommandHandler({ config, client, logger, sessionStore }) {
+  return async (ctx) => {
+    console.log("[Bot] /tab command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    const userId = ctx.from?.id;
+    if (!userId || !config.allowedUserIds.includes(userId)) {
+      console.log(`[Bot] /tab attempt by unauthorized user ${userId}`);
+      await ctx.reply("You are not authorized to use this bot.", getDefaultKeyboardOptions());
+      return;
+    }
+    const sessionId = sessionStore.getActiveSession();
+    if (!sessionId) {
+      await ctx.reply("\u274C No active session. Use /new to create one.", getDefaultKeyboardOptions());
+      return;
+    }
+    try {
+      const response = await client.session.prompt({
+        path: { id: sessionId },
+        body: {
+          parts: [{ type: "text", text: "	" }]
+        }
+      });
+      if (response.error) {
+        logger.error("Failed to send tab to OpenCode", {
+          error: response.error,
+          sessionId
+        });
+        await ctx.reply("\u274C Failed to send tab", getDefaultKeyboardOptions());
+        return;
+      }
+      logger.debug("Sent tab to OpenCode", { sessionId });
+    } catch (error) {
+      logger.error("Failed to send tab to OpenCode", {
+        error: String(error),
+        sessionId
+      });
+      await ctx.reply("\u274C Failed to send tab", getDefaultKeyboardOptions());
     }
   };
 }
@@ -623,45 +760,6 @@ var TelegramQueue = class {
   }
 };
 
-// src/lib/utils.ts
-import { mkdirSync, writeFileSync } from "fs";
-import { join as join2 } from "path";
-function writeEventToDebugFile(event, overwrite = false, excludeEvents = []) {
-  if (excludeEvents.includes(event.type)) {
-    return;
-  }
-  try {
-    const debugDir = join2(process.cwd(), "debug");
-    mkdirSync(debugDir, { recursive: true });
-    const filename = overwrite ? `${event.type}.json` : `${Date.now()}.${event.type}.json`;
-    const filepath = join2(debugDir, filename);
-    writeFileSync(filepath, JSON.stringify(event, null, 2), { flag: "w" });
-  } catch (error) {
-    console.error(`[TelegramRemote] Failed to write event to file:`, error);
-  }
-}
-async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
-  try {
-    const sendFn = () => bot.api.sendMessage(chatId, text);
-    const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
-    const messageId = sentMessage.message_id;
-    setTimeout(async () => {
-      try {
-        const deleteFn = () => bot.api.deleteMessage(chatId, messageId);
-        if (queue) {
-          await queue.enqueue(deleteFn);
-        } else {
-          await deleteFn();
-        }
-      } catch (error) {
-        console.warn("Failed to delete temporary message", { error: String(error), messageId });
-      }
-    }, durationMs);
-  } catch (error) {
-    console.error("Failed to send temporary message", { error: String(error) });
-  }
-}
-
 // src/bot.ts
 var botInstance = null;
 function isUserAllowed(ctx, allowedUserIds) {
@@ -706,6 +804,8 @@ function createTelegramBot(config, client, logger, sessionStore, globalStateStor
   bot.command("sessions", createSessionsCommandHandler(commandDeps));
   bot.command("agents", createAgentsCommandHandler(commandDeps));
   bot.command("help", createHelpCommandHandler(commandDeps));
+  bot.command("tab", createTabCommandHandler(commandDeps));
+  bot.command("esc", createEscCommandHandler(commandDeps));
   bot.on("message:text", createMessageTextHandler(commandDeps));
   bot.on("message:voice", createAudioMessageHandler(commandDeps));
   bot.on("message:audio", createAudioMessageHandler(commandDeps));
@@ -742,7 +842,13 @@ function createBotManager(bot, config, queue) {
     },
     async sendMessage(text, options) {
       console.log(`[Bot] sendMessage: "${text.slice(0, 50)}..."`);
-      const result = await queue.enqueue(() => bot.api.sendMessage(config.groupId, text, options));
+      const mergedOptions = {
+        ...options,
+        reply_markup: options?.reply_markup || createDefaultKeyboard()
+      };
+      const result = await queue.enqueue(
+        () => bot.api.sendMessage(config.groupId, text, mergedOptions)
+      );
       return { message_id: result.message_id };
     },
     async editMessage(messageId, text) {
