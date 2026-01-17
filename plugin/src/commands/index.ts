@@ -6,4 +6,5 @@ export { createMessageTextHandler } from "./message-text.command.js";
 export { createNewCommandHandler } from "./new.js";
 export { createSessionsCommandHandler } from "./sessions.js";
 export { createTabCommandHandler } from "./tab.js";
+export { createTodosCommandHandler } from "./todos.js";
 export type { CommandDeps } from "./types.js";

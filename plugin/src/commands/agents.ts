@@ -1,4 +1,4 @@
-import type { Context } from "grammy";
+import { InlineKeyboard, type Context } from "grammy";
 import type { CommandDeps } from "./types.js";
 
 export function createAgentsCommandHandler({
@@ -34,13 +34,13 @@ export function createAgentsCommandHandler({
       }
 
       const agents = agentsResponse.data || [];
-      const primaryAgents = agents.filter((a: any) => a.mode === "primary");
+      const primaryAgents = agents.filter((a: any) => a.mode === "primary" && !a.builtIn);
 
       // Update global state
       // We cast to any here to satisfy the store's strict type requirement if needed
       // because the SDK versions might have slight mismatches in our dev environment.
       globalStateStore.setAgents(primaryAgents as any[]);
-      if (defaultAgent) {
+      if (defaultAgent && primaryAgents.some((agent: any) => agent.name === defaultAgent)) {
         globalStateStore.setCurrentAgent(defaultAgent);
       }
 
@@ -49,16 +49,18 @@ export function createAgentsCommandHandler({
         return;
       }
 
-      const agentList = primaryAgents
-        .map((a: any) => {
-          const isSelected = a.name === defaultAgent ? " (Default)" : "";
-          return `- *${a.name}*${isSelected}: ${a.description || "No description"}`;
-        })
-        .join("\n");
+      const keyboard = new InlineKeyboard();
+      primaryAgents.forEach((agent: any) => {
+        const isSelected = agent.name === defaultAgent ? "✅ " : "";
+        keyboard.text(`${isSelected}${agent.name}`, `agent:${agent.name}`).row();
+      });
 
-      const message = `*Available Primary Agents:*\n\n${agentList}`;
+      const message = "*Select an agent:*";
 
-      await bot.sendTemporaryMessage(message, 30000);
+      await bot.sendTemporaryMessage(message, 30000, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      });
     } catch (error) {
       logger.error("Failed to list agents", { error: String(error) });
       await bot.sendTemporaryMessage("❌ Failed to list agents");

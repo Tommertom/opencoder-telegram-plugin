@@ -7,6 +7,16 @@ export const createQuestionCallbackHandler =
     if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
 
     const data = ctx.callbackQuery.data;
+    if (data.startsWith("session:")) {
+      const sessionId = data.replace("session:", "").trim();
+      if (!sessionId) return;
+
+      deps.globalStateStore.setActiveSession(sessionId);
+      await ctx.answerCallbackQuery({ text: "Active session set." });
+      await deps.bot.sendTemporaryMessage(`✅ Active session set: ${sessionId}`, 3000);
+      return;
+    }
+
     if (!data.startsWith("q:")) return;
 
     // Format: q:{questionId}:{questionIndex}:{optionIndex|done}

@@ -1,5 +1,5 @@
 import type { Session } from "@opencode-ai/sdk";
-import type { Context } from "grammy";
+import { InlineKeyboard, type Context } from "grammy";
 import type { CommandDeps } from "./types.js";
 
 type SessionWithArchive = Session & {
@@ -27,14 +27,14 @@ function isArchived(session: SessionWithArchive): boolean {
   return Boolean(info.time.archived);
 }
 
-function formatSessionLabel(session: SessionWithArchive): string {
+function getSessionLabel(session: SessionWithArchive): string {
   const info = getSessionInfo(session);
   const rawTitle = typeof info.title === "string" ? info.title.trim() : "";
   if (rawTitle) {
-    return `- ${rawTitle}`;
+    return rawTitle;
   }
   const id = info.id ?? session.id ?? "unknown";
-  return `- \`${id}\``;
+  return id;
 }
 
 export function createSessionsCommandHandler({ config, client, logger, bot }: CommandDeps) {
@@ -81,11 +81,14 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
         sessions = sessions.slice(0, limit);
       }
 
-      const sessionList = sessions.map((session) => formatSessionLabel(session)).join("\n");
-      const message = `Found ${sessions.length} active sessions:\n\n${sessionList}`;
+      const keyboard = new InlineKeyboard();
+      sessions.forEach((session) => {
+        const label = getSessionLabel(session);
+        keyboard.text(label, `session:${session.id}`).row();
+      });
 
-      // Display for 30 seconds
-      await bot.sendTemporaryMessage(message, 30000);
+      const message = `Select an active session (${sessions.length} found):`;
+      await bot.sendTemporaryMessage(message, 30000, { reply_markup: keyboard });
     } catch (error) {
       logger.error("Failed to list sessions", { error: String(error) });
       await bot.sendTemporaryMessage("❌ Failed to list sessions");

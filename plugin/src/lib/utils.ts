@@ -11,7 +11,7 @@ import type { TelegramQueue } from "./telegram-queue.js";
  * @param excludeEvents - Array of event types that should not be written to debug files (default: [])
  */
 export function writeEventToDebugFile(
-  event: { type: string;[key: string]: unknown },
+  event: { type: string; [key: string]: unknown },
   overwrite: boolean = false,
   excludeEvents: string[] = [],
 ): void {
@@ -45,9 +45,10 @@ export async function sendTemporaryMessage(
   text: string,
   durationMs: number = 1000,
   queue?: TelegramQueue,
+  options?: Parameters<Bot["api"]["sendMessage"]>[2],
 ): Promise<void> {
   try {
-    const sendFn = () => bot.api.sendMessage(chatId, text);
+    const sendFn = () => bot.api.sendMessage(chatId, text, options);
     const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
     const messageId = sentMessage.message_id;
 

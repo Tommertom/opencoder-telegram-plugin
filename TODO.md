@@ -1,9 +1,10 @@
 # Todos
 - Add /models to select model
-- Use selected agent
-- Use selected model
-- Use selected session
+- Use selected agent when sending prompt
+- Use selected model when sending prompt
+- Use selected session when sending prompt or issuing other commands
 - Store session titles per session ID
+- WHen the bot starts and there are session, take the latest, otherwise start one
 - Research why the question callback at the end does not trigger further work?
 - Make the question callback disappear if the questions.reply event is triggered for those questions
 - Store activeQuestion ID in global state store

@@ -22,12 +22,14 @@ export function createHelpCommandHandler({ config }: CommandDeps) {
       "/deletesessions - Delete all OpenCode sessions.\n" +
       "/sessions - List all active OpenCode sessions.\n" +
       "/agents - List available agents.\n" +
+      "/todos - Show current todos.\n" +
       "/tab - Send a Tab key to the active session.\n" +
       "/esc - Send an Escape key to the active session.\n" +
       "/help - Show this help message.\n" +
       "\n" +
       "Usage:\n" +
       "- Use /new to create a new session.\n" +
+      "- Use /todos to list the current todos.\n" +
       "- Send messages in this chat to interact with the active session.\n" +
       "- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n" +
       "- Use Tab and Esc buttons or commands to send special keys.\n" +

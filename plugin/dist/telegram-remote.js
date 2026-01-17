@@ -294,9 +294,9 @@ function createDefaultKeyboard() {
 }
 
 // src/lib/utils.ts
-async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
+async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue, options) {
   try {
-    const sendFn = () => bot.api.sendMessage(chatId, text);
+    const sendFn = () => bot.api.sendMessage(chatId, text, options);
     const sentMessage = queue ? await queue.enqueue(sendFn) : await sendFn();
     const messageId = sentMessage.message_id;
     setTimeout(async () => {
@@ -374,7 +374,7 @@ function createHelpCommandHandler({ config }) {
       await ctx.reply("You are not authorized to use this bot.");
       return;
     }
-    const helpMessage = "Available commands:\n\n/new - Create a new OpenCode session.\n/deletesessions - Delete all OpenCode sessions.\n/sessions - List all active OpenCode sessions.\n/agents - List available agents.\n/tab - Send a Tab key to the active session.\n/esc - Send an Escape key to the active session.\n/help - Show this help message.\n\nUsage:\n- Use /new to create a new session.\n- Send messages in this chat to interact with the active session.\n- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n- Use Tab and Esc buttons or commands to send special keys.\n- Admin-only commands (like /deletesessions) are restricted to configured users.\n\nNote: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
+    const helpMessage = "Available commands:\n\n/new - Create a new OpenCode session.\n/deletesessions - Delete all OpenCode sessions.\n/sessions - List all active OpenCode sessions.\n/agents - List available agents.\n/todos - Show current todos.\n/tab - Send a Tab key to the active session.\n/esc - Send an Escape key to the active session.\n/help - Show this help message.\n\nUsage:\n- Use /new to create a new session.\n- Send messages in this chat to interact with the active session.\n- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n- Use Tab and Esc buttons or commands to send special keys.\n- Admin-only commands (like /deletesessions) are restricted to configured users.\n\nNote: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
     await ctx.reply(helpMessage, getDefaultKeyboardOptions());
   };
 }
@@ -471,6 +471,7 @@ function createNewCommandHandler({
 }
 
 // src/commands/sessions.ts
+import { InlineKeyboard } from "grammy";
 function getSessionInfo(session) {
   return session.properties?.info ?? session;
 }
@@ -481,14 +482,14 @@ function isArchived(session) {
   }
   return Boolean(info.time.archived);
 }
-function formatSessionLabel(session) {
+function getSessionLabel(session) {
   const info = getSessionInfo(session);
   const rawTitle = typeof info.title === "string" ? info.title.trim() : "";
   if (rawTitle) {
-    return `- ${rawTitle}`;
+    return rawTitle;
   }
   const id = info.id ?? session.id ?? "unknown";
-  return `- \`${id}\``;
+  return id;
 }
 function createSessionsCommandHandler({ config, client, logger, bot }) {
   return async (ctx) => {
@@ -526,11 +527,13 @@ function createSessionsCommandHandler({ config, client, logger, bot }) {
       if (limit) {
         sessions = sessions.slice(0, limit);
       }
-      const sessionList = sessions.map((session) => formatSessionLabel(session)).join("\n");
-      const message = `Found ${sessions.length} active sessions:
-
-${sessionList}`;
-      await bot.sendTemporaryMessage(message, 3e4);
+      const keyboard = new InlineKeyboard();
+      sessions.forEach((session) => {
+        const label = getSessionLabel(session);
+        keyboard.text(label, `session:${session.id}`).row();
+      });
+      const message = `Select an active session (${sessions.length} found):`;
+      await bot.sendTemporaryMessage(message, 3e4, { reply_markup: keyboard });
     } catch (error) {
       logger.error("Failed to list sessions", { error: String(error) });
       await bot.sendTemporaryMessage("\u274C Failed to list sessions");
@@ -580,11 +583,54 @@ function createTabCommandHandler({ config, client, logger, globalStateStore }) {
   };
 }
 
+// src/commands/todos.ts
+var STATUS_ICONS = {
+  pending: "\u23F3",
+  in_progress: "\u{1F6A7}",
+  completed: "\u2705",
+  cancelled: "\u{1F6AB}"
+};
+var PRIORITY_ICONS = {
+  low: "\u{1F7E2}",
+  medium: "\u{1F7E1}",
+  high: "\u{1F534}"
+};
+function formatTodoLine(todo) {
+  const statusIcon = STATUS_ICONS[todo.status] ?? "\u23F3";
+  const priorityIcon = PRIORITY_ICONS[todo.priority] ?? "\u{1F7E1}";
+  const content = todo.content?.trim() || "Untitled todo";
+  return `${statusIcon} ${priorityIcon} ${content}`;
+}
+function createTodosCommandHandler({ config, bot, globalStateStore }) {
+  return async (ctx) => {
+    console.log("[Bot] /todos command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    const todos = globalStateStore.getTodos();
+    if (todos.length === 0) {
+      await bot.sendTemporaryMessage("No todos currently available.");
+      return;
+    }
+    const lines = todos.map((todo) => formatTodoLine(todo));
+    const message = `Current todos (${todos.length}):
+
+${lines.join("\n")}`;
+    await bot.sendTemporaryMessage(message, 3e4);
+  };
+}
+
 // src/commands/question-callback.command.ts
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard as InlineKeyboard2 } from "grammy";
 var createQuestionCallbackHandler = (deps) => async (ctx) => {
   if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
   const data = ctx.callbackQuery.data;
+  if (data.startsWith("session:")) {
+    const sessionId = data.replace("session:", "").trim();
+    if (!sessionId) return;
+    deps.globalStateStore.setActiveSession(sessionId);
+    await ctx.answerCallbackQuery({ text: "Active session set." });
+    await deps.bot.sendTemporaryMessage(`\u2705 Active session set: ${sessionId}`, 3e3);
+    return;
+  }
   if (!data.startsWith("q:")) return;
   const parts = data.split(":");
   if (parts.length !== 4) return;
@@ -622,7 +668,7 @@ var createQuestionCallbackHandler = (deps) => async (ctx) => {
       await ctx.answerCallbackQuery();
       await proceedToNext(ctx, deps, questionId, questionIndex);
     } else {
-      const keyboard = new InlineKeyboard();
+      const keyboard = new InlineKeyboard2();
       question.options.forEach((opt, idx) => {
         const isSelected = currentAnswers.includes(opt.label);
         const icon = isSelected ? "\u2611 " : "\u2610 ";
@@ -658,7 +704,7 @@ ${question.question}
   if (nextIndex < session.questions.length) {
     const nextQuestion = session.questions[nextIndex];
     const isMultiple = nextQuestion.multiple ?? false;
-    const keyboard = new InlineKeyboard();
+    const keyboard = new InlineKeyboard2();
     nextQuestion.options.forEach((option, optionIndex) => {
       const icon = isMultiple ? "\u2610 " : "";
       keyboard.text(`${icon}${option.label}`, `q:${questionId}:${nextIndex}:${optionIndex}`).row();
@@ -837,6 +883,7 @@ function createTelegramBot(config, client, logger, globalStateStore, questionTra
   bot.command("help", createHelpCommandHandler(commandDeps));
   bot.command("tab", createTabCommandHandler(commandDeps));
   bot.command("esc", createEscCommandHandler(commandDeps));
+  bot.command("todos", createTodosCommandHandler(commandDeps));
   bot.on("message:text", createMessageTextHandler(commandDeps));
   bot.on("message:voice", createAudioMessageHandler(commandDeps));
   bot.on("message:audio", createAudioMessageHandler(commandDeps));
@@ -895,11 +942,11 @@ function createBotManager(bot, config, queue) {
         )
       );
     },
-    async sendTemporaryMessage(text, durationMs = 1e4) {
+    async sendTemporaryMessage(text, durationMs = 1e4, options) {
       console.log(
         `[Bot] sendTemporaryMessage: "${text.slice(0, 50)}..." (duration: ${durationMs}ms)`
       );
-      await sendTemporaryMessage(bot, config.groupId, text, durationMs, queue);
+      await sendTemporaryMessage(bot, config.groupId, text, durationMs, queue, options);
     },
     queue
   };
@@ -1029,7 +1076,7 @@ async function handleMessageUpdated(event, context) {
 }
 
 // src/events/question-asked.ts
-import { InlineKeyboard as InlineKeyboard2 } from "grammy";
+import { InlineKeyboard as InlineKeyboard3 } from "grammy";
 async function handleQuestionAsked(event, context) {
   const { id: questionId, sessionID, questions } = event.properties;
   console.log(`[TelegramRemote] Question asked: ${questionId} (${questions.length} questions)`);
@@ -1044,7 +1091,7 @@ async function sendQuestion(context, questionId, index) {
   const question = session.questions[index];
   const isMultiple = question.multiple ?? false;
   const currentAnswers = session.answers[index] || [];
-  const keyboard = new InlineKeyboard2();
+  const keyboard = new InlineKeyboard3();
   question.options.forEach((option, optionIndex) => {
     const isSelected = currentAnswers.includes(option.label);
     const icon = isMultiple ? isSelected ? "\u2611 " : "\u2610 " : "";

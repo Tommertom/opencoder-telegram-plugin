@@ -1,4 +1,5 @@
 import { Bot, type Context, InputFile, Keyboard } from "grammy";
+import { createAgentsCallbackHandler } from "./commands/agents-callback.command.js";
 import { createAudioMessageHandler } from "./commands/audio-message.command.js";
 import {
   createAgentsCommandHandler,
@@ -9,6 +10,7 @@ import {
   createNewCommandHandler,
   createSessionsCommandHandler,
   createTabCommandHandler,
+  createTodosCommandHandler,
 } from "./commands/index.js";
 import { createQuestionCallbackHandler } from "./commands/question-callback.command.js";
 import type { Config } from "./config.js";
@@ -27,7 +29,7 @@ export interface TelegramBotManager {
   editMessage(messageId: number, text: string): Promise<void>;
   queue: TelegramQueue;
   sendDocument(document: string | Uint8Array, filename: string): Promise<void>;
-  sendTemporaryMessage(text: string, durationMs?: number): Promise<void>;
+  sendTemporaryMessage(text: string, durationMs?: number, options?: any): Promise<void>;
 }
 
 let botInstance: Bot | null = null;
@@ -92,6 +94,7 @@ export function createTelegramBot(
   bot.command("help", createHelpCommandHandler(commandDeps));
   bot.command("tab", createTabCommandHandler(commandDeps));
   bot.command("esc", createEscCommandHandler(commandDeps));
+  bot.command("todos", createTodosCommandHandler(commandDeps));
 
   bot.on("message:text", createMessageTextHandler(commandDeps));
   bot.on("message:voice", createAudioMessageHandler(commandDeps));
@@ -99,6 +102,7 @@ export function createTelegramBot(
 
   // Register callback query handler for questions
   bot.on("callback_query:data", createQuestionCallbackHandler(commandDeps));
+  bot.on("callback_query:data", createAgentsCallbackHandler(commandDeps));
 
   bot.catch((error) => {
     console.error("[Bot] Bot error caught:", error);
@@ -164,11 +168,11 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
       );
     },
 
-    async sendTemporaryMessage(text: string, durationMs: number = 10000) {
+    async sendTemporaryMessage(text: string, durationMs: number = 10000, options?: any) {
       console.log(
         `[Bot] sendTemporaryMessage: "${text.slice(0, 50)}..." (duration: ${durationMs}ms)`,
       );
-      await sendTemporaryMessage(bot, config.groupId, text, durationMs, queue);
+      await sendTemporaryMessage(bot, config.groupId, text, durationMs, queue, options);
     },
 
     queue,
