@@ -82,7 +82,12 @@ var SUPPORTED_FORMATS = [
   "audio/opus"
 ];
 var MAX_FILE_SIZE = 25 * 1024 * 1024;
-function createAudioMessageHandler({ config, client, logger, sessionStore }) {
+function createAudioMessageHandler({
+  config,
+  client,
+  logger,
+  globalStateStore
+}) {
   return async (ctx) => {
     console.log("[Bot] Audio/voice message received");
     if (!config.audioTranscriptionApiKey || !config.audioTranscriptionProvider) {
@@ -139,7 +144,7 @@ function createAudioMessageHandler({ config, client, logger, sessionStore }) {
         return;
       }
       logger.info("Transcription successful", { textLength: result.text.length });
-      let sessionId = sessionStore.getActiveSession();
+      let sessionId = globalStateStore.getActiveSession();
       if (!sessionId) {
         const createSessionResponse = await client.session.create({ body: {} });
         if (createSessionResponse.error) {
@@ -148,7 +153,7 @@ function createAudioMessageHandler({ config, client, logger, sessionStore }) {
           return;
         }
         sessionId = createSessionResponse.data.id;
-        sessionStore.setActiveSession(sessionId);
+        globalStateStore.setActiveSession(sessionId);
         logger.info("Auto-created session for voice message", { sessionId });
       }
       const promptResponse = await client.session.prompt({
@@ -230,7 +235,7 @@ function createDeleteSessionsCommandHandler({
   config,
   client,
   logger,
-  sessionStore
+  globalStateStore
 }) {
   return async (ctx) => {
     console.log("[Bot] /deletesessions command received");
@@ -272,7 +277,7 @@ function createDeleteSessionsCommandHandler({
       await ctx.reply("\u274C Failed to delete sessions");
       return;
     }
-    sessionStore.clearActiveSession();
+    globalStateStore.clearActiveSession();
     await ctx.reply(`Deleted ${deletedSessions} sessions (${failedSessions} failed).`);
   };
 }
@@ -289,20 +294,6 @@ function createDefaultKeyboard() {
 }
 
 // src/lib/utils.ts
-function writeEventToDebugFile(event, overwrite = false, excludeEvents = []) {
-  if (excludeEvents.includes(event.type)) {
-    return;
-  }
-  try {
-    const debugDir = join2(process.cwd(), "debug");
-    mkdirSync(debugDir, { recursive: true });
-    const filename = overwrite ? `${event.type}.json` : `${Date.now()}.${event.type}.json`;
-    const filepath = join2(debugDir, filename);
-    writeFileSync(filepath, JSON.stringify(event, null, 2), { flag: "w" });
-  } catch (error) {
-    console.error(`[TelegramRemote] Failed to write event to file:`, error);
-  }
-}
 async function sendTemporaryMessage(bot, chatId, text, durationMs = 1e3, queue) {
   try {
     const sendFn = () => bot.api.sendMessage(chatId, text);
@@ -331,7 +322,7 @@ function getDefaultKeyboardOptions() {
 }
 
 // src/commands/esc.ts
-function createEscCommandHandler({ config, client, logger, sessionStore }) {
+function createEscCommandHandler({ config, client, logger, globalStateStore }) {
   return async (ctx) => {
     console.log("[Bot] /esc command received");
     if (ctx.chat?.id !== config.groupId) return;
@@ -341,7 +332,7 @@ function createEscCommandHandler({ config, client, logger, sessionStore }) {
       await ctx.reply("You are not authorized to use this bot.", getDefaultKeyboardOptions());
       return;
     }
-    const sessionId = sessionStore.getActiveSession();
+    const sessionId = globalStateStore.getActiveSession();
     if (!sessionId) {
       await ctx.reply("\u274C No active session. Use /new to create one.", getDefaultKeyboardOptions());
       return;
@@ -389,12 +380,17 @@ function createHelpCommandHandler({ config }) {
 }
 
 // src/commands/message-text.command.ts
-function createMessageTextHandler({ config, client, logger, sessionStore }) {
+function createMessageTextHandler({
+  config,
+  client,
+  logger,
+  globalStateStore
+}) {
   return async (ctx) => {
     console.log(`[Bot] Text message received: "${ctx.message?.text?.slice(0, 50)}..."`);
     if (ctx.chat?.id !== config.groupId) return;
     if (ctx.message?.text?.startsWith("/")) return;
-    let sessionId = sessionStore.getActiveSession();
+    let sessionId = globalStateStore.getActiveSession();
     if (!sessionId) {
       try {
         const createSessionResponse = await client.session.create({ body: {} });
@@ -404,7 +400,7 @@ function createMessageTextHandler({ config, client, logger, sessionStore }) {
           return;
         }
         sessionId = createSessionResponse.data.id;
-        sessionStore.setActiveSession(sessionId);
+        globalStateStore.setActiveSession(sessionId);
         logger.info("Auto-created session", {
           sessionId
         });
@@ -449,7 +445,7 @@ function createNewCommandHandler({
   config,
   client,
   logger,
-  sessionStore
+  globalStateStore
 }) {
   return async (ctx) => {
     console.log("[Bot] /new command received");
@@ -462,7 +458,7 @@ function createNewCommandHandler({
         return;
       }
       const sessionId = createSessionResponse.data.id;
-      sessionStore.setActiveSession(sessionId);
+      globalStateStore.setActiveSession(sessionId);
       logger.info("Created new session", {
         sessionId
       });
@@ -475,6 +471,25 @@ function createNewCommandHandler({
 }
 
 // src/commands/sessions.ts
+function getSessionInfo(session) {
+  return session.properties?.info ?? session;
+}
+function isArchived(session) {
+  const info = getSessionInfo(session);
+  if (!info.time || !("archived" in info.time)) {
+    return false;
+  }
+  return Boolean(info.time.archived);
+}
+function formatSessionLabel(session) {
+  const info = getSessionInfo(session);
+  const rawTitle = typeof info.title === "string" ? info.title.trim() : "";
+  if (rawTitle) {
+    return `- ${rawTitle}`;
+  }
+  const id = info.id ?? session.id ?? "unknown";
+  return `- \`${id}\``;
+}
 function createSessionsCommandHandler({ config, client, logger, bot }) {
   return async (ctx) => {
     console.log("[Bot] /sessions command received");
@@ -503,6 +518,7 @@ function createSessionsCommandHandler({ config, client, logger, bot }) {
         return;
       }
       let sessions = sessionsResponse.data || [];
+      sessions = sessions.filter((session) => !isArchived(session));
       if (sessions.length === 0) {
         await bot.sendTemporaryMessage("No active sessions found.");
         return;
@@ -510,10 +526,7 @@ function createSessionsCommandHandler({ config, client, logger, bot }) {
       if (limit) {
         sessions = sessions.slice(0, limit);
       }
-      const sessionList = sessions.map((s) => {
-        const title = s.title || s.properties?.info?.title;
-        return title ? `- ${title} (\`${s.id}\`)` : `- \`${s.id}\``;
-      }).join("\n");
+      const sessionList = sessions.map((session) => formatSessionLabel(session)).join("\n");
       const message = `Found ${sessions.length} active sessions:
 
 ${sessionList}`;
@@ -526,7 +539,7 @@ ${sessionList}`;
 }
 
 // src/commands/tab.ts
-function createTabCommandHandler({ config, client, logger, sessionStore }) {
+function createTabCommandHandler({ config, client, logger, globalStateStore }) {
   return async (ctx) => {
     console.log("[Bot] /tab command received");
     if (ctx.chat?.id !== config.groupId) return;
@@ -536,7 +549,7 @@ function createTabCommandHandler({ config, client, logger, sessionStore }) {
       await ctx.reply("You are not authorized to use this bot.", getDefaultKeyboardOptions());
       return;
     }
-    const sessionId = sessionStore.getActiveSession();
+    const sessionId = globalStateStore.getActiveSession();
     if (!sessionId) {
       await ctx.reply("\u274C No active session. Use /new to create one.", getDefaultKeyboardOptions());
       return;
@@ -786,7 +799,7 @@ function isUserAllowed(ctx, allowedUserIds) {
   if (!userId) return false;
   return allowedUserIds.includes(userId);
 }
-function createTelegramBot(config, client, logger, sessionStore, globalStateStore, questionTracker) {
+function createTelegramBot(config, client, logger, globalStateStore, questionTracker) {
   console.log("[Bot] createTelegramBot called");
   const queue = new TelegramQueue(500);
   if (botInstance) {
@@ -813,9 +826,8 @@ function createTelegramBot(config, client, logger, sessionStore, globalStateStor
     config,
     client,
     logger,
-    sessionStore,
-    queue,
     globalStateStore,
+    queue,
     questionTracker
   };
   bot.command("new", createNewCommandHandler(commandDeps));
@@ -1060,10 +1072,8 @@ ${question.options.map((o) => `\u2022 *${o.label}*: ${o.description}`).join("\n"
 async function handleSessionCreated(event, context) {
   const sessionId = event.properties.info.id;
   console.log(`[TelegramRemote] Session created: ${sessionId.slice(0, 8)}`);
-  await context.bot.sendTemporaryMessage(
-    `\u2705 Session initialized: ${sessionId.slice(0, 8)}`,
-    1e4
-  );
+  context.globalStateStore.setActiveSession(sessionId);
+  await context.bot.sendTemporaryMessage(`\u2705 Session initialized: ${sessionId.slice(0, 8)}`, 1e4);
 }
 
 // src/events/session-status.ts
@@ -1084,6 +1094,16 @@ async function handleSessionUpdated(event, context) {
   }
 }
 
+// src/events/todo-updated.ts
+async function handleTodoUpdated(event, context) {
+  const todos = event?.properties?.todos;
+  if (!todos) {
+    return;
+  }
+  context.globalStateStore.setTodos(todos);
+  console.log(`[TelegramRemote] Todos updated: ${todos.length}`);
+}
+
 // src/global-state-store.ts
 var GlobalStateStore = class {
   events = [];
@@ -1094,8 +1114,20 @@ var GlobalStateStore = class {
   sessionStatus = null;
   lastMessagePartUpdate = null;
   lastResponse = null;
+  todos = [];
+  activeSessionId = null;
   constructor(allowedEventTypes) {
     this.allowedEventTypes = new Set(allowedEventTypes);
+  }
+  // Session tracking methods
+  setActiveSession(sessionId) {
+    this.activeSessionId = sessionId;
+  }
+  getActiveSession() {
+    return this.activeSessionId;
+  }
+  clearActiveSession() {
+    this.activeSessionId = null;
   }
   addEvent(type, data) {
     if (this.allowedEventTypes.has(type)) {
@@ -1157,6 +1189,12 @@ var GlobalStateStore = class {
   getLastResponse() {
     return this.lastResponse;
   }
+  setTodos(todos) {
+    this.todos = [...todos];
+  }
+  getTodos() {
+    return [...this.todos];
+  }
 };
 
 // src/question-tracker.ts
@@ -1198,39 +1236,6 @@ var QuestionTracker = class {
   }
 };
 
-// src/session-store.ts
-var SessionStore = class {
-  activeSessionId = null;
-  promptMessageId = void 0;
-  // Telegram message ID for active prompt
-  sessionInitializedMessageId = void 0;
-  // Telegram message ID for "Session initialized"
-  setActiveSession(sessionId) {
-    this.activeSessionId = sessionId;
-  }
-  getActiveSession() {
-    return this.activeSessionId;
-  }
-  clearActiveSession() {
-    this.activeSessionId = null;
-  }
-  setPromptMessageId(messageId) {
-    this.promptMessageId = messageId;
-  }
-  getPromptMessageId() {
-    return this.promptMessageId;
-  }
-  clearPromptMessageId() {
-    this.promptMessageId = void 0;
-  }
-  setSessionInitializedMessageId(messageId) {
-    this.sessionInitializedMessageId = messageId;
-  }
-  getSessionInitializedMessageId() {
-    return this.sessionInitializedMessageId;
-  }
-};
-
 // src/telegram-remote.ts
 var TelegramRemote = async ({ client }) => {
   console.log("[TelegramRemote] Plugin initialization started");
@@ -1248,27 +1253,18 @@ var TelegramRemote = async ({ client }) => {
       }
     };
   }
-  console.log(
-    "[TelegramRemote] Creating session store, global state store and question tracker..."
-  );
-  const sessionStore = new SessionStore();
+  console.log("[TelegramRemote] Creating global state store and question tracker...");
   const questionTracker = new QuestionTracker();
   const globalStateStore = new GlobalStateStore([
     "file.edited",
     "session.updated",
     "session.status",
     "message.part.updated",
-    "message.updated"
+    "message.updated",
+    "todo.updated"
   ]);
   console.log("[TelegramRemote] Creating Telegram bot...");
-  const bot = createTelegramBot(
-    config,
-    client,
-    logger,
-    sessionStore,
-    globalStateStore,
-    questionTracker
-  );
+  const bot = createTelegramBot(config, client, logger, globalStateStore, questionTracker);
   console.log("[TelegramRemote] Bot created successfully");
   console.log("[TelegramRemote] Starting Telegram bot polling...");
   bot.start().catch((error) => {
@@ -1312,7 +1308,6 @@ var TelegramRemote = async ({ client }) => {
   const eventContext = {
     client,
     bot,
-    sessionStore,
     globalStateStore,
     questionTracker
   };
@@ -1322,11 +1317,11 @@ var TelegramRemote = async ({ client }) => {
     "message.part.updated": handleMessagePartUpdated,
     "session.updated": handleSessionUpdated,
     "session.status": handleSessionStatus,
-    "question.asked": handleQuestionAsked
+    "question.asked": handleQuestionAsked,
+    "todo.updated": handleTodoUpdated
   };
   return {
     event: async ({ event }) => {
-      writeEventToDebugFile(event, false, []);
       globalStateStore.addEvent(event.type, event);
       const handler = eventHandlers[event.type];
       if (handler) {
