@@ -5,7 +5,9 @@ import {
   type EventHandlerContext,
   handleMessageUpdated,
   handleSessionCreated,
+  handleSessionUpdated,
 } from "./events/index.js";
+import { GlobalStateStore } from "./global-state-store.js";
 import { createLogger } from "./lib/logger.js";
 import { writeEventToDebugFile } from "./lib/utils.js";
 import { MessageTracker } from "./message-tracker.js";
@@ -24,16 +26,24 @@ export const TelegramRemote: Plugin = async ({ client }) => {
     console.error("[TelegramRemote] Configuration error:", error);
     logger.error(`Configuration error: ${error}`);
     return {
-      event: async () => {},
+      event: async () => { },
     };
   }
 
-  console.log("[TelegramRemote] Creating session store and message tracker...");
+  console.log(
+    "[TelegramRemote] Creating session store, message tracker, and global state store...",
+  );
   const sessionStore = new SessionStore();
   const messageTracker = new MessageTracker();
+  const globalStateStore = new GlobalStateStore([
+    "file.edited",
+    "session.updated",
+    "message.part.updated",
+    "message.updated",
+  ]);
 
   console.log("[TelegramRemote] Creating Telegram bot...");
-  const bot = createTelegramBot(config, client, logger, sessionStore);
+  const bot = createTelegramBot(config, client, logger, sessionStore, globalStateStore);
   console.log("[TelegramRemote] Bot created successfully");
 
   console.log("[TelegramRemote] Starting Telegram bot polling...");
@@ -86,12 +96,14 @@ export const TelegramRemote: Plugin = async ({ client }) => {
     bot,
     sessionStore,
     messageTracker,
+    globalStateStore,
   };
 
   // Event type to handler mapping
   const eventHandlers = {
     "session.created": handleSessionCreated,
     "message.updated": handleMessageUpdated,
+    "session.updated": handleSessionUpdated,
   } as const;
 
   return {
@@ -99,7 +111,10 @@ export const TelegramRemote: Plugin = async ({ client }) => {
       console.log(`[TelegramRemote] Event received: ${event.type}`);
 
       // Write event to debug file
-      writeEventToDebugFile(event);
+      writeEventToDebugFile(event, false);
+
+      // Store event in global state
+      globalStateStore.addEvent(event.type, event);
 
       const handler = eventHandlers[event.type as keyof typeof eventHandlers];
       if (handler) {

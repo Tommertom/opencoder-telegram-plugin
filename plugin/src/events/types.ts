@@ -1,4 +1,5 @@
 import type { createTelegramBot } from "../bot.js";
+import type { GlobalStateStore } from "../global-state-store.js";
 import type { OpencodeClient } from "../lib/types.js";
 import type { MessageTracker } from "../message-tracker.js";
 import type { SessionStore } from "../session-store.js";
@@ -10,4 +11,5 @@ export interface EventHandlerContext {
   bot: TelegramBot;
   sessionStore: SessionStore;
   messageTracker: MessageTracker;
+  globalStateStore: GlobalStateStore;
 }
