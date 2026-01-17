@@ -1,5 +1,41 @@
+import type { Session } from "@opencode-ai/sdk";
 import type { Context } from "grammy";
 import type { CommandDeps } from "./types.js";
+
+type SessionWithArchive = Session & {
+  time: Session["time"] & {
+    archived?: number;
+  };
+  properties?: {
+    info?: Session & {
+      time: Session["time"] & {
+        archived?: number;
+      };
+    };
+  };
+};
+
+function getSessionInfo(session: SessionWithArchive): SessionWithArchive {
+  return session.properties?.info ?? session;
+}
+
+function isArchived(session: SessionWithArchive): boolean {
+  const info = getSessionInfo(session);
+  if (!info.time || !("archived" in info.time)) {
+    return false;
+  }
+  return Boolean(info.time.archived);
+}
+
+function formatSessionLabel(session: SessionWithArchive): string {
+  const info = getSessionInfo(session);
+  const rawTitle = typeof info.title === "string" ? info.title.trim() : "";
+  if (rawTitle) {
+    return `- ${rawTitle}`;
+  }
+  const id = info.id ?? session.id ?? "unknown";
+  return `- \`${id}\``;
+}
 
 export function createSessionsCommandHandler({ config, client, logger, bot }: CommandDeps) {
   return async (ctx: Context) => {
@@ -10,9 +46,15 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
     let limit: number | undefined;
 
     if (arg) {
-      const parsed = Number.parseInt(arg, 10);
-      if (Number.isNaN(parsed) || parsed <= 0) {
+      if (!/^\d+$/.test(arg)) {
         await bot.sendTemporaryMessage("❌ Invalid argument. Please provide a valid number.");
+        return;
+      }
+      const parsed = Number.parseInt(arg, 10);
+      if (parsed <= 0) {
+        await bot.sendTemporaryMessage(
+          "❌ Invalid argument. Please provide a number greater than 0.",
+        );
         return;
       }
       limit = parsed;
@@ -27,7 +69,8 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
         return;
       }
 
-      let sessions = sessionsResponse.data || [];
+      let sessions = (sessionsResponse.data || []) as SessionWithArchive[];
+      sessions = sessions.filter((session) => !isArchived(session));
 
       if (sessions.length === 0) {
         await bot.sendTemporaryMessage("No active sessions found.");
@@ -38,12 +81,7 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
         sessions = sessions.slice(0, limit);
       }
 
-      const sessionList = sessions
-        .map((s: any) => {
-          const title = s.title || s.properties?.info?.title;
-          return title ? `- ${title} (\`${s.id}\`)` : `- \`${s.id}\``;
-        })
-        .join("\n");
+      const sessionList = sessions.map((session) => formatSessionLabel(session)).join("\n");
       const message = `Found ${sessions.length} active sessions:\n\n${sessionList}`;
 
       // Display for 30 seconds
