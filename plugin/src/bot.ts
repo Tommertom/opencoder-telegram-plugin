@@ -1,9 +1,14 @@
 import { Bot, type Context, InputFile } from "grammy";
-import { createDeleteSessionsCommandHandler } from "./commands/deletesessions.js";
-import { createHelpCommandHandler } from "./commands/help.js";
-import { createMessageTextHandler } from "./commands/message-text.command.js";
-import { createNewCommandHandler } from "./commands/new.js";
+import {
+  createAgentsCommandHandler,
+  createDeleteSessionsCommandHandler,
+  createHelpCommandHandler,
+  createMessageTextHandler,
+  createNewCommandHandler,
+  createSessionsCommandHandler,
+} from "./commands/index.js";
 import type { Config } from "./config.js";
+import type { GlobalStateStore } from "./global-state-store.js";
 import type { Logger } from "./lib/logger.js";
 import { TelegramQueue } from "./lib/telegram-queue.js";
 import type { OpencodeClient } from "./lib/types.js";
@@ -13,7 +18,7 @@ import type { SessionStore } from "./session-store.js";
 export interface TelegramBotManager {
   start(): Promise<void>;
   stop(): Promise<void>;
-  sendMessage(text: string): Promise<void>;
+  sendMessage(text: string): Promise<{ message_id: number }>;
   editMessage(messageId: number, text: string): Promise<void>;
   queue: TelegramQueue;
   sendDocument(document: string | Uint8Array, filename: string): Promise<void>;
@@ -33,6 +38,7 @@ export function createTelegramBot(
   client: OpencodeClient,
   logger: Logger,
   sessionStore: SessionStore,
+  globalStateStore: GlobalStateStore,
 ): TelegramBotManager {
   console.log("[Bot] createTelegramBot called");
 
@@ -71,10 +77,13 @@ export function createTelegramBot(
     logger,
     sessionStore,
     queue,
+    globalStateStore,
   };
 
   bot.command("new", createNewCommandHandler(commandDeps));
   bot.command("deletesessions", createDeleteSessionsCommandHandler(commandDeps));
+  bot.command("sessions", createSessionsCommandHandler(commandDeps));
+  bot.command("agents", createAgentsCommandHandler(commandDeps));
   bot.command("help", createHelpCommandHandler(commandDeps));
 
   bot.on("message:text", createMessageTextHandler(commandDeps));
@@ -116,7 +125,8 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
     async sendMessage(text: string) {
       console.log(`[Bot] sendMessage: "${text.slice(0, 50)}..."`);
       // Use queue to avoid rate limiting
-      await queue.enqueue(() => bot.api.sendMessage(config.groupId, text));
+      const result = await queue.enqueue(() => bot.api.sendMessage(config.groupId, text));
+      return { message_id: result.message_id };
     },
 
     async editMessage(messageId: number, text: string) {
