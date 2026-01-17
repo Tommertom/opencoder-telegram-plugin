@@ -6,6 +6,13 @@ export interface StoredEvent {
   timestamp: number;
 }
 
+export interface TodoItem {
+  content: string;
+  status: "pending" | "completed" | "cancelled" | "in_progress";
+  priority: "low" | "medium" | "high";
+  id: string;
+}
+
 export class GlobalStateStore {
   private events: StoredEvent[] = [];
   private allowedEventTypes: Set<string>;
@@ -14,9 +21,25 @@ export class GlobalStateStore {
   private currentSessionTitle: string | null = null;
   private sessionStatus: string | null = null;
   private lastMessagePartUpdate: string | null = null;
+  private lastResponse: string | null = null;
+  private todos: TodoItem[] = [];
+  private activeSessionId: string | null = null;
 
   constructor(allowedEventTypes: string[]) {
     this.allowedEventTypes = new Set(allowedEventTypes);
+  }
+
+  // Session tracking methods
+  setActiveSession(sessionId: string): void {
+    this.activeSessionId = sessionId;
+  }
+
+  getActiveSession(): string | null {
+    return this.activeSessionId;
+  }
+
+  clearActiveSession(): void {
+    this.activeSessionId = null;
   }
 
   addEvent(type: string, data: unknown): void {
@@ -84,5 +107,21 @@ export class GlobalStateStore {
 
   getLastMessagePartUpdate(): string | null {
     return this.lastMessagePartUpdate;
+  }
+
+  setLastResponse(text: string): void {
+    this.lastResponse = text;
+  }
+
+  getLastResponse(): string | null {
+    return this.lastResponse;
+  }
+
+  setTodos(todos: TodoItem[]): void {
+    this.todos = [...todos];
+  }
+
+  getTodos(): TodoItem[] {
+    return [...this.todos];
   }
 }
