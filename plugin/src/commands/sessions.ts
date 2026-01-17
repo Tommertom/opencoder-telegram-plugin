@@ -6,6 +6,18 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
     console.log("[Bot] /sessions command received");
     if (ctx.chat?.id !== config.groupId) return;
 
+    const arg = typeof ctx.match === "string" ? ctx.match.trim() : "";
+    let limit: number | undefined;
+
+    if (arg) {
+      const parsed = Number.parseInt(arg, 10);
+      if (Number.isNaN(parsed) || parsed <= 0) {
+        await bot.sendTemporaryMessage("❌ Invalid argument. Please provide a valid number.");
+        return;
+      }
+      limit = parsed;
+    }
+
     try {
       const sessionsResponse = await client.session.list();
 
@@ -15,11 +27,15 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
         return;
       }
 
-      const sessions = sessionsResponse.data || [];
+      let sessions = sessionsResponse.data || [];
 
       if (sessions.length === 0) {
         await bot.sendTemporaryMessage("No active sessions found.");
         return;
+      }
+
+      if (limit) {
+        sessions = sessions.slice(0, limit);
       }
 
       const sessionList = sessions

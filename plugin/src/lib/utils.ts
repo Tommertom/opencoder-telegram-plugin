@@ -11,7 +11,7 @@ import type { TelegramQueue } from "./telegram-queue.js";
  * @param excludeEvents - Array of event types that should not be written to debug files (default: [])
  */
 export function writeEventToDebugFile(
-  event: { type: string; [key: string]: unknown },
+  event: { type: string;[key: string]: unknown },
   overwrite: boolean = false,
   excludeEvents: string[] = [],
 ): void {

@@ -20,6 +20,8 @@ export function createHelpCommandHandler({ config }: CommandDeps) {
       "\n" +
       "/new - Create a new OpenCode session.\n" +
       "/deletesessions - Delete all OpenCode sessions.\n" +
+      "/sessions - List all active OpenCode sessions.\n" +
+      "/agents - List available agents.\n" +
       "/tab - Send a Tab key to the active session.\n" +
       "/esc - Send an Escape key to the active session.\n" +
       "/help - Show this help message.\n" +
