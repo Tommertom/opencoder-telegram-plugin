@@ -443,10 +443,10 @@ function createMessageTextHandler({
     let modelConfig;
     if (selectedModel) {
       const parts = selectedModel.split("/");
-      if (parts.length === 2) {
+      if (parts.length === 2 && parts[0].trim() && parts[1].trim()) {
         modelConfig = {
-          providerID: parts[0],
-          modelID: parts[1]
+          providerID: parts[0].trim(),
+          modelID: parts[1].trim()
         };
       }
     }
@@ -501,8 +501,8 @@ function createModelsCommandHandler({
       const configResponse = await client.config.get();
       let currentModel = "";
       if (configResponse.data) {
-        const cfg = configResponse.data;
-        currentModel = cfg.model || "";
+        const configData = configResponse.data;
+        currentModel = configData.model || "";
       }
       const selectedModel = globalStateStore.getSelectedModel() || currentModel;
       const providersData = providersResponse.data;

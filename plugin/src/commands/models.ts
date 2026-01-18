@@ -26,8 +26,9 @@ export function createModelsCommandHandler({
       const configResponse = await client.config.get();
       let currentModel = "";
       if (configResponse.data) {
-        const cfg = configResponse.data as any;
-        currentModel = cfg.model || "";
+        // Safely access the model property
+        const configData = configResponse.data;
+        currentModel = (configData as { model?: string }).model || "";
       }
 
       // Get selected model from state store (overrides config default)
