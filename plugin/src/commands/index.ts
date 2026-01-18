@@ -3,6 +3,7 @@ export { createDeleteSessionsCommandHandler } from "./deletesessions.js";
 export { createEscCommandHandler } from "./esc.js";
 export { createHelpCommandHandler } from "./help.js";
 export { createMessageTextHandler } from "./message-text.command.js";
+export { createModelsCommandHandler } from "./models.js";
 export { createNewCommandHandler } from "./new.js";
 export { createSessionsCommandHandler } from "./sessions.js";
 export { createTabCommandHandler } from "./tab.js";

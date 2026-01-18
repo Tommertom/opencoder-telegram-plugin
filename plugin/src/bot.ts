@@ -1,4 +1,4 @@
-import { Bot, type Context, InputFile, Keyboard } from "grammy";
+import { Bot, type Context, InputFile } from "grammy";
 import { createAgentsCallbackHandler } from "./commands/agents-callback.command.js";
 import { createAudioMessageHandler } from "./commands/audio-message.command.js";
 import {
@@ -7,11 +7,13 @@ import {
   createEscCommandHandler,
   createHelpCommandHandler,
   createMessageTextHandler,
+  createModelsCommandHandler,
   createNewCommandHandler,
   createSessionsCommandHandler,
   createTabCommandHandler,
   createTodosCommandHandler,
 } from "./commands/index.js";
+import { createModelsCallbackHandler } from "./commands/models-callback.command.js";
 import { createQuestionCallbackHandler } from "./commands/question-callback.command.js";
 import type { Config } from "./config.js";
 import type { GlobalStateStore } from "./global-state-store.js";
@@ -91,6 +93,7 @@ export function createTelegramBot(
   bot.command("deletesessions", createDeleteSessionsCommandHandler(commandDeps));
   bot.command("sessions", createSessionsCommandHandler(commandDeps));
   bot.command("agents", createAgentsCommandHandler(commandDeps));
+  bot.command("models", createModelsCommandHandler(commandDeps));
   bot.command("help", createHelpCommandHandler(commandDeps));
   bot.command("tab", createTabCommandHandler(commandDeps));
   bot.command("esc", createEscCommandHandler(commandDeps));
@@ -103,6 +106,7 @@ export function createTelegramBot(
   // Register callback query handler for questions
   bot.on("callback_query:data", createQuestionCallbackHandler(commandDeps));
   bot.on("callback_query:data", createAgentsCallbackHandler(commandDeps));
+  bot.on("callback_query:data", createModelsCallbackHandler(commandDeps));
 
   bot.catch((error) => {
     console.error("[Bot] Bot error caught:", error);

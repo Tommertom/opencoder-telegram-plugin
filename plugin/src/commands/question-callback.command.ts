@@ -81,7 +81,7 @@ export const createQuestionCallbackHandler =
 
         try {
           await ctx.editMessageReplyMarkup({ reply_markup: keyboard });
-        } catch (error) {
+        } catch (_error) {
           // Ignore "message is not modified" errors
         }
         await ctx.answerCallbackQuery();

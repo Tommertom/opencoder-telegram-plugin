@@ -39,11 +39,27 @@ export function createMessageTextHandler({
 
     const userMessage = ctx.message?.text;
 
+    // Get the selected model from global state (if any)
+    const selectedModel = globalStateStore.getSelectedModel();
+
+    // Parse the model string into providerID and modelID
+    let modelConfig: { providerID: string; modelID: string } | undefined;
+    if (selectedModel) {
+      const parts = selectedModel.split("/");
+      if (parts.length === 2) {
+        modelConfig = {
+          providerID: parts[0],
+          modelID: parts[1],
+        };
+      }
+    }
+
     try {
       const response = await client.session.prompt({
         path: { id: sessionId },
         body: {
           parts: [{ type: "text", text: userMessage || "" }],
+          ...(modelConfig && { model: modelConfig }),
         },
       });
 

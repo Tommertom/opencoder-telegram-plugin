@@ -14,7 +14,6 @@ import {
 
 import { GlobalStateStore } from "./global-state-store.js";
 import { createLogger } from "./lib/logger.js";
-import { writeEventToDebugFile } from "./lib/utils.js";
 import { QuestionTracker } from "./question-tracker.js";
 
 export const TelegramRemote: Plugin = async ({ client }) => {
@@ -30,7 +29,7 @@ export const TelegramRemote: Plugin = async ({ client }) => {
     console.error("[TelegramRemote] Configuration error:", error);
     logger.error(`Configuration error: ${error}`);
     return {
-      event: async () => { },
+      event: async () => {},
     };
   }
 

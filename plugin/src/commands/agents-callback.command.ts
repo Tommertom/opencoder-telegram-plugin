@@ -27,7 +27,7 @@ export const createAgentsCallbackHandler = (deps: CommandDeps) => async (ctx: Co
     await ctx.editMessageText(`✅ Active agent set to *${selectedAgent.name}*`, {
       parse_mode: "Markdown",
     });
-  } catch (error) {
+  } catch (_error) {
     await deps.bot.sendTemporaryMessage(`✅ Active agent set to ${selectedAgent.name}`, 3000);
   }
 };

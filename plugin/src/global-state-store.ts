@@ -24,6 +24,7 @@ export class GlobalStateStore {
   private lastResponse: string | null = null;
   private todos: TodoItem[] = [];
   private activeSessionId: string | null = null;
+  private selectedModel: string | null = null;
 
   constructor(allowedEventTypes: string[]) {
     this.allowedEventTypes = new Set(allowedEventTypes);
@@ -123,5 +124,17 @@ export class GlobalStateStore {
 
   getTodos(): TodoItem[] {
     return [...this.todos];
+  }
+
+  setSelectedModel(model: string): void {
+    this.selectedModel = model;
+  }
+
+  getSelectedModel(): string | null {
+    return this.selectedModel;
+  }
+
+  clearSelectedModel(): void {
+    this.selectedModel = null;
   }
 }

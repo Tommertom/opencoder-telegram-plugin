@@ -1,4 +1,4 @@
-import { InlineKeyboard, type Context } from "grammy";
+import { type Context, InlineKeyboard } from "grammy";
 import type { CommandDeps } from "./types.js";
 
 export function createAgentsCommandHandler({

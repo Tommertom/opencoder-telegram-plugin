@@ -5,7 +5,7 @@ export async function handleMessagePartUpdated(
   event: any,
   context: EventHandlerContext,
 ): Promise<void> {
-  const logger = createLogger(context.client);
+  const _logger = createLogger(context.client);
   const part = event.properties.part;
 
   if (part.type === "text") {

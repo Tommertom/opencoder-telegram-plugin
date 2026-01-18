@@ -26,7 +26,7 @@ var createAgentsCallbackHandler = (deps) => async (ctx) => {
     await ctx.editMessageText(`\u2705 Active agent set to *${selectedAgent.name}*`, {
       parse_mode: "Markdown"
     });
-  } catch (error) {
+  } catch (_error) {
     await deps.bot.sendTemporaryMessage(`\u2705 Active agent set to ${selectedAgent.name}`, 3e3);
   }
 };
@@ -402,7 +402,7 @@ function createHelpCommandHandler({ config }) {
       await ctx.reply("You are not authorized to use this bot.");
       return;
     }
-    const helpMessage = "Available commands:\n\n/new - Create a new OpenCode session.\n/deletesessions - Delete all OpenCode sessions.\n/sessions - List all active OpenCode sessions.\n/agents - List available agents.\n/todos - Show current todos.\n/tab - Send a Tab key to the active session.\n/esc - Send an Escape key to the active session.\n/help - Show this help message.\n\nUsage:\n- Use /new to create a new session.\n- Use /todos to list the current todos.\n- Send messages in this chat to interact with the active session.\n- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n- Use Tab and Esc buttons or commands to send special keys.\n- Admin-only commands (like /deletesessions) are restricted to configured users.\n\nNote: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
+    const helpMessage = "Available commands:\n\n/new - Create a new OpenCode session.\n/deletesessions - Delete all OpenCode sessions.\n/sessions - List all active OpenCode sessions.\n/agents - List available agents.\n/models - List available models and select one.\n/todos - Show current todos.\n/tab - Send a Tab key to the active session.\n/esc - Send an Escape key to the active session.\n/help - Show this help message.\n\nUsage:\n- Use /new to create a new session.\n- Use /models to select a model for subsequent prompts.\n- Use /todos to list the current todos.\n- Send messages in this chat to interact with the active session.\n- Send voice messages or audio files (max 25MB) to transcribe and send them as prompts.\n- Use Tab and Esc buttons or commands to send special keys.\n- Admin-only commands (like /deletesessions) are restricted to configured users.\n\nNote: All commands require you to be a configured allowed user. The bot enforces this via its middleware and command-level checks.";
     await ctx.reply(helpMessage, getDefaultKeyboardOptions());
   };
 }
@@ -439,11 +439,23 @@ function createMessageTextHandler({
       }
     }
     const userMessage = ctx.message?.text;
+    const selectedModel = globalStateStore.getSelectedModel();
+    let modelConfig;
+    if (selectedModel) {
+      const parts = selectedModel.split("/");
+      if (parts.length === 2) {
+        modelConfig = {
+          providerID: parts[0],
+          modelID: parts[1]
+        };
+      }
+    }
     try {
       const response = await client.session.prompt({
         path: { id: sessionId },
         body: {
-          parts: [{ type: "text", text: userMessage || "" }]
+          parts: [{ type: "text", text: userMessage || "" }],
+          ...modelConfig && { model: modelConfig }
         }
       });
       if (response.error) {
@@ -463,6 +475,79 @@ function createMessageTextHandler({
         sessionId
       });
       await ctx.reply("\u274C Failed to process message", getDefaultKeyboardOptions());
+    }
+  };
+}
+
+// src/commands/models.ts
+import { InlineKeyboard as InlineKeyboard2 } from "grammy";
+function createModelsCommandHandler({
+  config,
+  client,
+  logger,
+  bot,
+  globalStateStore
+}) {
+  return async (ctx) => {
+    console.log("[Bot] /models command received");
+    if (ctx.chat?.id !== config.groupId) return;
+    try {
+      const providersResponse = await client.config.providers();
+      if (providersResponse.error) {
+        logger.error("Failed to list providers", { error: providersResponse.error });
+        await bot.sendTemporaryMessage("\u274C Failed to list models");
+        return;
+      }
+      const configResponse = await client.config.get();
+      let currentModel = "";
+      if (configResponse.data) {
+        const cfg = configResponse.data;
+        currentModel = cfg.model || "";
+      }
+      const selectedModel = globalStateStore.getSelectedModel() || currentModel;
+      const providersData = providersResponse.data;
+      if (!providersData || !providersData.providers) {
+        await bot.sendTemporaryMessage("No providers found.");
+        return;
+      }
+      const allModels = [];
+      for (const provider of providersData.providers) {
+        if (provider.models) {
+          for (const [_modelKey, model] of Object.entries(provider.models)) {
+            allModels.push({
+              id: `${provider.id}/${model.id}`,
+              name: model.name,
+              providerId: provider.id,
+              providerName: provider.name
+            });
+          }
+        }
+      }
+      if (allModels.length === 0) {
+        await bot.sendTemporaryMessage("No models found.");
+        return;
+      }
+      allModels.sort((a, b) => {
+        const providerCompare = a.providerId.localeCompare(b.providerId);
+        if (providerCompare !== 0) return providerCompare;
+        return a.name.localeCompare(b.name);
+      });
+      const keyboard = new InlineKeyboard2();
+      for (const model of allModels) {
+        const isSelected = model.id === selectedModel ? "\u2705 " : "";
+        const displayName = `${isSelected}${model.providerName}: ${model.name}`;
+        keyboard.text(displayName, `model:${model.id}`).row();
+      }
+      const message = `*Select a model:*
+
+Current: \`${selectedModel || "default"}\``;
+      await bot.sendTemporaryMessage(message, 3e4, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard
+      });
+    } catch (error) {
+      logger.error("Failed to list models", { error: String(error) });
+      await bot.sendTemporaryMessage("\u274C Failed to list models");
     }
   };
 }
@@ -499,7 +584,7 @@ function createNewCommandHandler({
 }
 
 // src/commands/sessions.ts
-import { InlineKeyboard as InlineKeyboard2 } from "grammy";
+import { InlineKeyboard as InlineKeyboard3 } from "grammy";
 function getSessionInfo(session) {
   return session.properties?.info ?? session;
 }
@@ -555,7 +640,7 @@ function createSessionsCommandHandler({ config, client, logger, bot }) {
       if (limit) {
         sessions = sessions.slice(0, limit);
       }
-      const keyboard = new InlineKeyboard2();
+      const keyboard = new InlineKeyboard3();
       sessions.forEach((session) => {
         const label = getSessionLabel(session);
         keyboard.text(label, `session:${session.id}`).row();
@@ -646,8 +731,27 @@ ${lines.join("\n")}`;
   };
 }
 
+// src/commands/models-callback.command.ts
+var createModelsCallbackHandler = (deps) => async (ctx) => {
+  if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
+  const data = ctx.callbackQuery.data;
+  if (!data.startsWith("model:")) return;
+  const modelId = data.replace("model:", "");
+  if (!modelId) return;
+  if (ctx.chat?.id !== deps.config.groupId) return;
+  deps.globalStateStore.setSelectedModel(modelId);
+  await ctx.answerCallbackQuery({ text: `Model set to ${modelId}` });
+  try {
+    await ctx.editMessageText(`\u2705 Model set to *${modelId}*`, {
+      parse_mode: "Markdown"
+    });
+  } catch (_error) {
+    await deps.bot.sendTemporaryMessage(`\u2705 Model set to ${modelId}`, 3e3);
+  }
+};
+
 // src/commands/question-callback.command.ts
-import { InlineKeyboard as InlineKeyboard3 } from "grammy";
+import { InlineKeyboard as InlineKeyboard4 } from "grammy";
 var createQuestionCallbackHandler = (deps) => async (ctx) => {
   if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
   const data = ctx.callbackQuery.data;
@@ -696,7 +800,7 @@ var createQuestionCallbackHandler = (deps) => async (ctx) => {
       await ctx.answerCallbackQuery();
       await proceedToNext(ctx, deps, questionId, questionIndex);
     } else {
-      const keyboard = new InlineKeyboard3();
+      const keyboard = new InlineKeyboard4();
       question.options.forEach((opt, idx) => {
         const isSelected = currentAnswers.includes(opt.label);
         const icon = isSelected ? "\u2611 " : "\u2610 ";
@@ -705,7 +809,7 @@ var createQuestionCallbackHandler = (deps) => async (ctx) => {
       keyboard.text("Done", `q:${questionId}:${questionIndex}:done`);
       try {
         await ctx.editMessageReplyMarkup({ reply_markup: keyboard });
-      } catch (error) {
+      } catch (_error) {
       }
       await ctx.answerCallbackQuery();
     }
@@ -732,7 +836,7 @@ ${question.question}
   if (nextIndex < session.questions.length) {
     const nextQuestion = session.questions[nextIndex];
     const isMultiple = nextQuestion.multiple ?? false;
-    const keyboard = new InlineKeyboard3();
+    const keyboard = new InlineKeyboard4();
     nextQuestion.options.forEach((option, optionIndex) => {
       const icon = isMultiple ? "\u2610 " : "";
       keyboard.text(`${icon}${option.label}`, `q:${questionId}:${nextIndex}:${optionIndex}`).row();
@@ -908,6 +1012,7 @@ function createTelegramBot(config, client, logger, globalStateStore, questionTra
   bot.command("deletesessions", createDeleteSessionsCommandHandler(commandDeps));
   bot.command("sessions", createSessionsCommandHandler(commandDeps));
   bot.command("agents", createAgentsCommandHandler(commandDeps));
+  bot.command("models", createModelsCommandHandler(commandDeps));
   bot.command("help", createHelpCommandHandler(commandDeps));
   bot.command("tab", createTabCommandHandler(commandDeps));
   bot.command("esc", createEscCommandHandler(commandDeps));
@@ -917,6 +1022,7 @@ function createTelegramBot(config, client, logger, globalStateStore, questionTra
   bot.on("message:audio", createAudioMessageHandler(commandDeps));
   bot.on("callback_query:data", createQuestionCallbackHandler(commandDeps));
   bot.on("callback_query:data", createAgentsCallbackHandler(commandDeps));
+  bot.on("callback_query:data", createModelsCallbackHandler(commandDeps));
   bot.catch((error) => {
     console.error("[Bot] Bot error caught:", error);
     logger.error("Bot error", { error: String(error) });
@@ -1062,7 +1168,7 @@ function createLogger(client) {
 
 // src/events/message-part-updated.ts
 async function handleMessagePartUpdated(event, context) {
-  const logger = createLogger(context.client);
+  const _logger = createLogger(context.client);
   const part = event.properties.part;
   if (part.type === "text") {
     const text = part.text;
@@ -1105,7 +1211,7 @@ async function handleMessageUpdated(event, context) {
 }
 
 // src/events/question-asked.ts
-import { InlineKeyboard as InlineKeyboard4 } from "grammy";
+import { InlineKeyboard as InlineKeyboard5 } from "grammy";
 async function handleQuestionAsked(event, context) {
   const { id: questionId, sessionID, questions } = event.properties;
   console.log(`[TelegramRemote] Question asked: ${questionId} (${questions.length} questions)`);
@@ -1120,7 +1226,7 @@ async function sendQuestion(context, questionId, index) {
   const question = session.questions[index];
   const isMultiple = question.multiple ?? false;
   const currentAnswers = session.answers[index] || [];
-  const keyboard = new InlineKeyboard4();
+  const keyboard = new InlineKeyboard5();
   question.options.forEach((option, optionIndex) => {
     const isSelected = currentAnswers.includes(option.label);
     const icon = isMultiple ? isSelected ? "\u2611 " : "\u2610 " : "";
@@ -1192,6 +1298,7 @@ var GlobalStateStore = class {
   lastResponse = null;
   todos = [];
   activeSessionId = null;
+  selectedModel = null;
   constructor(allowedEventTypes) {
     this.allowedEventTypes = new Set(allowedEventTypes);
   }
@@ -1270,6 +1377,15 @@ var GlobalStateStore = class {
   }
   getTodos() {
     return [...this.todos];
+  }
+  setSelectedModel(model) {
+    this.selectedModel = model;
+  }
+  getSelectedModel() {
+    return this.selectedModel;
+  }
+  clearSelectedModel() {
+    this.selectedModel = null;
   }
 };
 

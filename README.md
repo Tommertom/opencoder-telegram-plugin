@@ -118,6 +118,16 @@ Send any message without using `/new` first:
 - Sets it as the active session
 - All subsequent messages go to this session
 
+### Selecting a Model
+
+To select a model for your prompts:
+1. Use `/models` command
+2. The bot will show all available models from configured providers
+3. Tap the model you want to use
+4. All subsequent prompts will use the selected model
+
+The selected model persists across messages in the same session.
+
 ### Switching Sessions
 
 To switch to a different session:
@@ -161,6 +171,8 @@ These states are used to coordinate between the Telegram bot interface and the O
 
 - `/new` - Create a new session and set it as active
 - `/deletesessions` - Delete all OpenCode sessions
+- `/agents` - List available agents and select one
+- `/models` - List available models and select one to use for prompts
 - `/help` - Show help message
 
 ## Security
