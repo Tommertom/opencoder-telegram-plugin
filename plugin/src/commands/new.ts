@@ -8,6 +8,7 @@ export function createNewCommandHandler({
   client,
   logger,
   globalStateStore,
+  sessionStore,
 }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /new command received");
@@ -22,13 +23,17 @@ export function createNewCommandHandler({
       }
 
       const sessionId = createSessionResponse.data.id;
+      const sessionTitle = createSessionResponse.data.title || sessionId;
+
       globalStateStore.setActiveSession(sessionId);
+      sessionStore.setTitle(sessionId, sessionTitle);
 
       logger.info("Created new session", {
         sessionId,
+        title: sessionTitle,
       });
 
-      await bot.sendMessage(`✅ Session created: ${sessionId}`);
+      await bot.sendMessage(`✅ Session created: ${sessionTitle}`);
     } catch (error) {
       logger.error("Failed to create new session", { error: String(error) });
       await ctx.reply("❌ Failed to create session", getDefaultKeyboardOptions());

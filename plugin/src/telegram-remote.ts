@@ -14,8 +14,8 @@ import {
 
 import { GlobalStateStore } from "./global-state-store.js";
 import { createLogger } from "./lib/logger.js";
-import { writeEventToDebugFile } from "./lib/utils.js";
 import { QuestionTracker } from "./question-tracker.js";
+import { SessionStore } from "./session-store.js";
 
 export const TelegramRemote: Plugin = async ({ client }) => {
   console.log("[TelegramRemote] Plugin initialization started");
@@ -30,12 +30,13 @@ export const TelegramRemote: Plugin = async ({ client }) => {
     console.error("[TelegramRemote] Configuration error:", error);
     logger.error(`Configuration error: ${error}`);
     return {
-      event: async () => { },
+      event: async () => {},
     };
   }
 
   console.log("[TelegramRemote] Creating global state store and question tracker...");
   const questionTracker = new QuestionTracker();
+  const sessionStore = new SessionStore();
   const globalStateStore = new GlobalStateStore([
     "file.edited",
     "session.updated",
@@ -50,7 +51,14 @@ export const TelegramRemote: Plugin = async ({ client }) => {
   // But wait, createTelegramBot returns the bot manager which is used in eventContext.
   // The command handlers inside createTelegramBot need questionTracker too.
   // So we should update createTelegramBot signature.
-  const bot = createTelegramBot(config, client, logger, globalStateStore, questionTracker);
+  const bot = createTelegramBot(
+    config,
+    client,
+    logger,
+    globalStateStore,
+    questionTracker,
+    sessionStore,
+  );
   console.log("[TelegramRemote] Bot created successfully");
 
   console.log("[TelegramRemote] Starting Telegram bot polling...");
@@ -103,6 +111,7 @@ export const TelegramRemote: Plugin = async ({ client }) => {
     bot,
     globalStateStore,
     questionTracker,
+    sessionStore,
   };
 
   // Event type to handler mapping

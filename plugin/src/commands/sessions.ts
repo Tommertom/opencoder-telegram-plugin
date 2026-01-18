@@ -1,5 +1,6 @@
 import type { Session } from "@opencode-ai/sdk";
-import { InlineKeyboard, type Context } from "grammy";
+import { type Context, InlineKeyboard } from "grammy";
+import type { SessionStore } from "../session-store.js";
 import type { CommandDeps } from "./types.js";
 
 type SessionWithArchive = Session & {
@@ -27,17 +28,32 @@ function isArchived(session: SessionWithArchive): boolean {
   return Boolean(info.time.archived);
 }
 
-function getSessionLabel(session: SessionWithArchive): string {
+function getSessionLabel(session: SessionWithArchive, sessionStore: SessionStore): string {
+  // First check if we have a stored title for this session
+  const storedTitle = sessionStore.getTitle(session.id);
+  if (storedTitle) {
+    return storedTitle;
+  }
+
+  // Fallback to session info title
   const info = getSessionInfo(session);
   const rawTitle = typeof info.title === "string" ? info.title.trim() : "";
   if (rawTitle) {
     return rawTitle;
   }
+
+  // Final fallback to session ID
   const id = info.id ?? session.id ?? "unknown";
   return id;
 }
 
-export function createSessionsCommandHandler({ config, client, logger, bot }: CommandDeps) {
+export function createSessionsCommandHandler({
+  config,
+  client,
+  logger,
+  bot,
+  sessionStore,
+}: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /sessions command received");
     if (ctx.chat?.id !== config.groupId) return;
@@ -83,7 +99,7 @@ export function createSessionsCommandHandler({ config, client, logger, bot }: Co
 
       const keyboard = new InlineKeyboard();
       sessions.forEach((session) => {
-        const label = getSessionLabel(session);
+        const label = getSessionLabel(session, sessionStore);
         keyboard.text(label, `session:${session.id}`).row();
       });
 

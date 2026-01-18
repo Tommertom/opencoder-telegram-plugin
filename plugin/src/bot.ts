@@ -1,4 +1,4 @@
-import { Bot, type Context, InputFile, Keyboard } from "grammy";
+import { Bot, type Context, InputFile } from "grammy";
 import { createAgentsCallbackHandler } from "./commands/agents-callback.command.js";
 import { createAudioMessageHandler } from "./commands/audio-message.command.js";
 import {
@@ -21,6 +21,7 @@ import { TelegramQueue } from "./lib/telegram-queue.js";
 import type { OpencodeClient } from "./lib/types.js";
 import { sendTemporaryMessage } from "./lib/utils.js";
 import type { QuestionTracker } from "./question-tracker.js";
+import type { SessionStore } from "./session-store.js";
 
 export interface TelegramBotManager {
   start(): Promise<void>;
@@ -46,6 +47,7 @@ export function createTelegramBot(
   logger: Logger,
   globalStateStore: GlobalStateStore,
   questionTracker: QuestionTracker,
+  sessionStore: SessionStore,
 ): TelegramBotManager {
   console.log("[Bot] createTelegramBot called");
 
@@ -85,6 +87,7 @@ export function createTelegramBot(
     globalStateStore,
     queue,
     questionTracker,
+    sessionStore,
   };
 
   bot.command("new", createNewCommandHandler(commandDeps));
