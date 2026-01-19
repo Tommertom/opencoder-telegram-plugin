@@ -30,7 +30,17 @@ export async function handleMessagePartUpdated(
     // If this part includes an end time, the message part is complete — send it to Telegram
     if (part.time && typeof part.time.end !== "undefined" && part.time.end !== null) {
       try {
-        await context.bot.sendMessage(text);
+        // Use central config to decide whether to send as message or markdown file
+        const { loadConfig } = await import("../config.js");
+        const cfg = loadConfig();
+        const lineCount = text.split(/\r?\n/).length;
+
+        if (lineCount > cfg.finalMessageLineLimit) {
+          await context.bot.sendDocument(text, "response.md");
+        } else {
+          await context.bot.sendMessage(text);
+        }
+
         // Store the sent message in global state keyed by sessionID
         if (part.sessionID) {
           try {
@@ -40,6 +50,7 @@ export async function handleMessagePartUpdated(
             logger.warn("Failed to store lastSendFinalMessage", { error: String(err) });
           }
         }
+
         logger.info("Message part sent to Telegram", { text: text.substring(0, 100) });
       } catch (error) {
         logger.error("Failed to send message part to Telegram", { error: String(error) });

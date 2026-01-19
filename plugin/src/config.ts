@@ -7,6 +7,8 @@ export interface Config {
   botToken: string;
   groupId: number;
   allowedUserIds: number[];
+  // Limits the number of lines before sending as a file instead of a message
+  finalMessageLineLimit: number;
   audioTranscriptionApiKey?: string;
   audioTranscriptionProvider?: "openai" | "gemini" | null;
 }
@@ -67,14 +69,27 @@ export function loadConfig(): Config {
     console.log("[Config] Audio transcription disabled (no API key)");
   }
 
+  // Final message line limit (default: 100)
+  const finalMessageLineLimitEnv = process.env.TELEGRAM_FINAL_MESSAGE_LINE_LIMIT;
+  let finalMessageLineLimit = 100;
+  if (finalMessageLineLimitEnv && finalMessageLineLimitEnv.trim() !== "") {
+    const parsed = Number.parseInt(finalMessageLineLimitEnv, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      finalMessageLineLimit = parsed;
+    } else {
+      console.warn("[Config] Invalid TELEGRAM_FINAL_MESSAGE_LINE_LIMIT, using default 100");
+    }
+  }
+
   console.log(
-    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}`,
+    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}, finalMessageLineLimit=${finalMessageLineLimit}`,
   );
 
   return {
     botToken,
     groupId: parsedGroupId,
     allowedUserIds,
+    finalMessageLineLimit,
     audioTranscriptionApiKey: audioApiKey,
     audioTranscriptionProvider: audioProvider,
   };
