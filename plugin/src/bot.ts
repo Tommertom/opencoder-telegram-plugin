@@ -1,6 +1,7 @@
 import { Bot, type Context, InputFile, Keyboard } from "grammy";
 import {
   createAgentsCallbackHandler,
+  createModelsCallbackHandler,
   createQuestionCallbackHandler,
 } from "./callbacks/index.js";
 import { createAudioMessageHandler } from "./commands/audio-message.command.js";
@@ -10,6 +11,7 @@ import {
   createEscCommandHandler,
   createHelpCommandHandler,
   createMessageTextHandler,
+  createModelsCommandHandler,
   createNewCommandHandler,
   createSessionsCommandHandler,
   createTabCommandHandler,
@@ -19,10 +21,10 @@ import type { Config } from "./config.js";
 import type { GlobalStateStore } from "./global-state-store.js";
 import { createDefaultKeyboard } from "./lib/keyboard.js";
 import type { Logger } from "./lib/logger.js";
-import { TelegramQueue } from "./lib/telegram-queue.js";
 import type { OpencodeClient } from "./lib/types.js";
 import { sendTemporaryMessage } from "./lib/utils.js";
 import type { QuestionTracker } from "./question-tracker.js";
+import { TelegramQueue } from "./services/telegram-queue.service.js";
 
 export interface TelegramBotManager {
   start(): Promise<void>;
@@ -104,6 +106,7 @@ export function createTelegramBot(
   bot.command("deletesessions", createDeleteSessionsCommandHandler(commandDeps));
   bot.command("sessions", createSessionsCommandHandler(commandDeps));
   bot.command("agents", createAgentsCommandHandler(commandDeps));
+  bot.command("models", createModelsCommandHandler(commandDeps));
   bot.command("help", createHelpCommandHandler(commandDeps));
   bot.command("tab", createTabCommandHandler(commandDeps));
   bot.command("esc", createEscCommandHandler(commandDeps));
@@ -118,6 +121,7 @@ export function createTelegramBot(
   // This prevents one handler from blocking the other since they don't call next()
   bot.callbackQuery(/^(session:|q:)/, createQuestionCallbackHandler(commandDeps));
   bot.callbackQuery(/^agent:/, createAgentsCallbackHandler(commandDeps));
+  bot.callbackQuery(/^model:/, createModelsCallbackHandler(commandDeps));
 
   bot.catch((error) => {
     console.error("[Bot] Bot error caught:", error);
@@ -186,9 +190,7 @@ function createBotManager(
         reply_markup: options?.reply_markup || createDefaultKeyboard(),
       };
       // Use queue to avoid rate limiting
-      const result = await queue.enqueue(() =>
-        bot.api.sendMessage(chatId, text, mergedOptions),
-      );
+      const result = await queue.enqueue(() => bot.api.sendMessage(chatId, text, mergedOptions));
       return { message_id: result.message_id };
     },
 
