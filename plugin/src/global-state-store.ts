@@ -22,6 +22,13 @@ export class GlobalStateStore {
   private sessionStatus: string | null = null;
   private lastMessagePartUpdate: string | null = null;
   private lastResponse: string | null = null;
+  private lastResponseSentContent: string | null = null;
+  // Map storing the last sent final message per sessionID
+  public lastSendFinalMessage: Map<string, string> = new Map();
+  // Map storing the last update text per sessionID when delta updates arrive
+  public lastUpdate: Map<string, string> = new Map();
+  // Map storing the last delta payload per sessionID
+  public lastUpdateDelta: Map<string, string> = new Map();
   private todos: TodoItem[] = [];
   private activeSessionId: string | null = null;
   private sessionTitles: Map<string, string> = new Map();
@@ -129,6 +136,41 @@ export class GlobalStateStore {
 
   getLastResponse(): string | null {
     return this.lastResponse;
+  }
+
+  setLastResponseSentContent(text: string): void {
+    this.lastResponseSentContent = text;
+  }
+
+  getLastResponseSentContent(): string | null {
+    return this.lastResponseSentContent;
+  }
+
+  setLastSendFinalMessage(sessionId: string, text: string): void {
+    if (!sessionId) return;
+    this.lastSendFinalMessage.set(sessionId, text);
+  }
+
+  getLastSendFinalMessage(sessionId: string): string | null {
+    return this.lastSendFinalMessage.get(sessionId) ?? null;
+  }
+
+  setLastUpdate(sessionId: string, text: string): void {
+    if (!sessionId) return;
+    this.lastUpdate.set(sessionId, text);
+  }
+
+  getLastUpdate(sessionId: string): string | null {
+    return this.lastUpdate.get(sessionId) ?? null;
+  }
+
+  setLastUpdateDelta(sessionId: string, delta: string): void {
+    if (!sessionId) return;
+    this.lastUpdateDelta.set(sessionId, delta);
+  }
+
+  getLastUpdateDelta(sessionId: string): string | null {
+    return this.lastUpdateDelta.get(sessionId) ?? null;
   }
 
   setTodos(todos: TodoItem[]): void {
