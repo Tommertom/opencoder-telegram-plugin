@@ -46,14 +46,26 @@ export class StepUpdateService {
             clearInterval(state.intervalId);
         }
 
-        await this.sendUpdate(sessionId, true);
+        const messageId = await this.sendUpdate(sessionId, true);
 
         if (state) {
             this.sessions.delete(sessionId);
         }
+
+        if (messageId) {
+            setTimeout(() => {
+                void this.bot.deleteMessage(messageId).catch((error: unknown) => {
+                    this.logger.warn("Failed to delete step update message", {
+                        error: String(error),
+                        sessionId,
+                        messageId,
+                    });
+                });
+            }, 2000);
+        }
     }
 
-    private async sendUpdate(sessionId: string, isFinal: boolean): Promise<void> {
+    private async sendUpdate(sessionId: string, isFinal: boolean): Promise<number | undefined> {
         const text = this.globalStateStore.getLastUpdate(sessionId);
         if (!text || text.trim() === "") {
             if (isFinal) {
@@ -62,7 +74,7 @@ export class StepUpdateService {
                     state.finalSent = true;
                 }
             }
-            return;
+            return undefined;
         }
 
         const state = this.sessions.get(sessionId);
@@ -70,7 +82,8 @@ export class StepUpdateService {
         if (!state) {
             if (isFinal) {
                 try {
-                    await this.bot.sendMessage(text);
+                    const result = await this.bot.sendMessage(text);
+                    return result.message_id;
                 } catch (error) {
                     this.logger.warn("Failed to send final step update", {
                         error: String(error),
@@ -78,20 +91,20 @@ export class StepUpdateService {
                     });
                 }
             }
-            return;
+            return undefined;
         }
 
         if (state.finalSent && !isFinal) {
-            return;
+            return state.messageId;
         }
 
         if (state.lastSentText === text && !isFinal) {
-            return;
+            return state.messageId;
         }
 
         if (isFinal && state.lastSentText === text && state.messageId) {
             state.finalSent = true;
-            return;
+            return state.messageId;
         }
 
         try {
@@ -106,6 +119,7 @@ export class StepUpdateService {
             if (isFinal) {
                 state.finalSent = true;
             }
+            return state.messageId;
         } catch (error) {
             this.logger.warn("Failed to send step update", {
                 error: String(error),
@@ -113,5 +127,7 @@ export class StepUpdateService {
                 isFinal,
             });
         }
+
+        return state.messageId;
     }
 }

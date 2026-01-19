@@ -29,6 +29,7 @@ export interface TelegramBotManager {
   stop(): Promise<void>;
   sendMessage(text: string, options?: any): Promise<{ message_id: number }>;
   editMessage(messageId: number, text: string): Promise<void>;
+  deleteMessage(messageId: number): Promise<void>;
   queue: TelegramQueue;
   sendDocument(document: string | Uint8Array, filename: string): Promise<void>;
   sendTemporaryMessage(text: string, durationMs?: number, options?: any): Promise<void>;
@@ -160,6 +161,11 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
       console.log(`[Bot] editMessage ${messageId}: "${text.slice(0, 50)}..."`);
       // Use queue to avoid rate limiting
       await queue.enqueue(() => bot.api.editMessageText(config.groupId, messageId, text));
+    },
+
+    async deleteMessage(messageId: number) {
+      console.log(`[Bot] deleteMessage ${messageId}`);
+      await queue.enqueue(() => bot.api.deleteMessage(config.groupId, messageId));
     },
 
     async sendDocument(document: string | Uint8Array, filename: string) {
