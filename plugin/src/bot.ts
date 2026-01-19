@@ -101,8 +101,10 @@ export function createTelegramBot(
   bot.on("message:audio", createAudioMessageHandler(commandDeps));
 
   // Register callback query handler for questions
-  bot.on("callback_query:data", createQuestionCallbackHandler(commandDeps));
-  bot.on("callback_query:data", createAgentsCallbackHandler(commandDeps));
+  // We use regex to route specific callback data to the correct handler
+  // This prevents one handler from blocking the other since they don't call next()
+  bot.callbackQuery(/^(session:|q:)/, createQuestionCallbackHandler(commandDeps));
+  bot.callbackQuery(/^agent:/, createAgentsCallbackHandler(commandDeps));
 
   bot.catch((error) => {
     console.error("[Bot] Bot error caught:", error);
