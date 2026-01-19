@@ -6,6 +6,8 @@ export const createQuestionCallbackHandler =
     (deps: CommandDeps & { questionTracker: QuestionTracker }) => async (ctx: Context) => {
         if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
 
+        if (ctx.chat?.type !== "private") return;
+
         const data = ctx.callbackQuery.data;
         if (data.startsWith("session:")) {
             const sessionId = data.replace("session:", "").trim();
@@ -141,10 +143,13 @@ async function proceedToNext(
             .map((o) => `• *${o.label}*: ${o.description}`)
             .join("\n")}`;
 
-        // Using queue via wrapper if possible, or direct API with queue
-        // We know deps.bot.queue exists and deps.config.groupId exists
+        const chatId = ctx.chat?.id;
+        if (!chatId) {
+            return;
+        }
+
         const result = await deps.queue.enqueue(() =>
-            ctx.api.sendMessage(deps.config.groupId, messageText, {
+            ctx.api.sendMessage(chatId, messageText, {
                 parse_mode: "Markdown",
                 reply_markup: keyboard,
             }),

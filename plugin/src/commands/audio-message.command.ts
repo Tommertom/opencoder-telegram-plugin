@@ -34,7 +34,7 @@ export function createAudioMessageHandler({
       return;
     }
 
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     // Get audio file info
     const voice = ctx.message?.voice;
@@ -98,7 +98,9 @@ export function createAudioMessageHandler({
       );
 
       // Delete processing message
-      await ctx.api.deleteMessage(config.groupId, processingMsg.message_id);
+      if (ctx.chat?.id) {
+        await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id);
+      }
 
       if (result.error || !result.text.trim()) {
         await ctx.reply(`❌ Transcription failed: ${result.error || "Empty transcription"}`);

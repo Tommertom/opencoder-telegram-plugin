@@ -9,7 +9,7 @@ export function createDeleteSessionsCommandHandler({
 }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /deletesessions command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     let deletedSessions = 0;
     let failedSessions = 0;

@@ -11,7 +11,7 @@ export function createNewCommandHandler({
 }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /new command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     try {
       const createSessionResponse = await client.session.create({ body: {} });

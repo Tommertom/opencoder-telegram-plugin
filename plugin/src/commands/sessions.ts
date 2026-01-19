@@ -46,7 +46,7 @@ export function createSessionsCommandHandler({
 }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /sessions command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     const arg = typeof ctx.match === "string" ? ctx.match.trim() : "";
     let limit: number | undefined;

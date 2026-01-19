@@ -58,7 +58,7 @@ export function createTelegramBot(
   if (botInstance) {
     console.log("[Bot] Reusing existing bot instance");
     logger.warn("Bot already initialized, reusing existing instance");
-    return createBotManager(botInstance, config, queue);
+    return createBotManager(botInstance, queue, globalStateStore, logger);
   }
 
   console.log("[Bot] Creating new Bot instance with token");
@@ -73,12 +73,22 @@ export function createTelegramBot(
       logger.warn("Unauthorized user attempted access", { userId: ctx.from?.id });
       return;
     }
+    if (ctx.chat?.type !== "private") {
+      logger.warn("Ignoring non-private chat", {
+        chatId: ctx.chat?.id,
+        chatType: ctx.chat?.type,
+      });
+      return;
+    }
+    if (ctx.chat?.id) {
+      globalStateStore.setActiveChatId(ctx.chat.id);
+    }
     await next();
   });
 
   // Create the manager and pass the manager into command handlers so they
   // can use the convenience methods (createForumTopic, deleteForumTopic, getForumTopics, sendMessage, etc.)
-  const manager = createBotManager(bot, config, queue);
+  const manager = createBotManager(bot, queue, globalStateStore, logger);
 
   const commandDeps = {
     bot: manager,
@@ -118,7 +128,26 @@ export function createTelegramBot(
   return manager;
 }
 
-function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): TelegramBotManager {
+function requireActiveChatId(
+  globalStateStore: GlobalStateStore,
+  logger: Logger,
+  action: string,
+): number {
+  const chatId = globalStateStore.getActiveChatId();
+  if (!chatId) {
+    const message = `No active chat available for ${action}. Ask an allowed user to message the bot first.`;
+    logger.warn(message);
+    throw new Error(message);
+  }
+  return chatId;
+}
+
+function createBotManager(
+  bot: Bot,
+  queue: TelegramQueue,
+  globalStateStore: GlobalStateStore,
+  logger: Logger,
+): TelegramBotManager {
   return {
     async start() {
       console.log("[Bot] start() called - beginning long polling...");
@@ -127,8 +156,13 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
         onStart: async () => {
           console.log("[Bot] Telegram bot polling started successfully");
           try {
-            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled", 1000, queue);
-            console.log("[Bot] Startup message sent to group");
+            const chatId = globalStateStore.getActiveChatId();
+            if (!chatId) {
+              console.log("[Bot] No active chat yet; skipping startup message");
+              return;
+            }
+            await sendTemporaryMessage(bot, chatId, "Messaging enabled", 1000, queue);
+            console.log("[Bot] Startup message sent to active chat");
           } catch (error) {
             console.error("[Bot] Failed to send startup message:", error);
           }
@@ -145,6 +179,7 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
 
     async sendMessage(text: string, options?: any) {
       console.log(`[Bot] sendMessage: "${text.slice(0, 50)}..."`);
+      const chatId = requireActiveChatId(globalStateStore, logger, "sendMessage");
       // Add default keyboard if no reply_markup is provided
       const mergedOptions = {
         ...options,
@@ -152,27 +187,30 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
       };
       // Use queue to avoid rate limiting
       const result = await queue.enqueue(() =>
-        bot.api.sendMessage(config.groupId, text, mergedOptions),
+        bot.api.sendMessage(chatId, text, mergedOptions),
       );
       return { message_id: result.message_id };
     },
 
     async editMessage(messageId: number, text: string) {
       console.log(`[Bot] editMessage ${messageId}: "${text.slice(0, 50)}..."`);
+      const chatId = requireActiveChatId(globalStateStore, logger, "editMessage");
       // Use queue to avoid rate limiting
-      await queue.enqueue(() => bot.api.editMessageText(config.groupId, messageId, text));
+      await queue.enqueue(() => bot.api.editMessageText(chatId, messageId, text));
     },
 
     async deleteMessage(messageId: number) {
       console.log(`[Bot] deleteMessage ${messageId}`);
-      await queue.enqueue(() => bot.api.deleteMessage(config.groupId, messageId));
+      const chatId = requireActiveChatId(globalStateStore, logger, "deleteMessage");
+      await queue.enqueue(() => bot.api.deleteMessage(chatId, messageId));
     },
 
     async sendDocument(document: string | Uint8Array, filename: string) {
       console.log(`[Bot] sendDocument: filename="${filename}"`);
+      const chatId = requireActiveChatId(globalStateStore, logger, "sendDocument");
       await queue.enqueue(() =>
         bot.api.sendDocument(
-          config.groupId,
+          chatId,
           new InputFile(typeof document === "string" ? Buffer.from(document) : document, filename),
         ),
       );
@@ -182,7 +220,8 @@ function createBotManager(bot: Bot, config: Config, queue: TelegramQueue): Teleg
       console.log(
         `[Bot] sendTemporaryMessage: "${text.slice(0, 50)}..." (duration: ${durationMs}ms)`,
       );
-      await sendTemporaryMessage(bot, config.groupId, text, durationMs, queue, options);
+      const chatId = requireActiveChatId(globalStateStore, logger, "sendTemporaryMessage");
+      await sendTemporaryMessage(bot, chatId, text, durationMs, queue, options);
     },
 
     queue,

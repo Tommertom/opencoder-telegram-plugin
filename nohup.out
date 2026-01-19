@@ -1,0 +1,66 @@
+[0m
+  [38;2;128;128;128m                    [0m             ▄     
+  [38;2;128;128;128m█▀▀█ █▀▀█ █▀▀█ █▀▀▄ [0m█▀▀▀ █▀▀█ █▀▀█ █▀▀█
+  [38;2;128;128;128m█░░█ █░░█ █▀▀▀ █░░█ [0m█░░░ █░░█ █░░█ █▀▀▀
+  [38;2;128;128;128m▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ [0m▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
+[0m
+[94m[1m  Web interface:     [0m http://127.0.0.1:37929/
+[TelegramRemote] Plugin initialization started
+[TelegramRemote] Loading configuration...
+[Config] Loading environment configuration...
+[Config] Audio transcription enabled with gemini
+[Config] Configuration loaded: allowedUsers=1, finalMessageLineLimit=100, stepUpdateIntervalMs=500
+[TelegramRemote] Configuration loaded successfully
+[TelegramRemote] Creating global state store and question tracker...
+[TelegramRemote] Creating Telegram bot...
+[Bot] createTelegramBot called
+[Bot] Creating new Bot instance with token
+[Bot] Bot instance created
+[Bot] Setting up middleware and handlers...
+[Bot] All handlers registered, returning bot manager
+[TelegramRemote] Bot created successfully
+[TelegramRemote] Starting Telegram bot polling...
+[Bot] start() called - beginning long polling...
+[TelegramRemote] Plugin initialization complete, returning event handler
+[Config] Loading environment configuration...
+[Config] Audio transcription enabled with gemini
+[Config] Configuration loaded: allowedUsers=1, finalMessageLineLimit=100, stepUpdateIntervalMs=500
+[Config] Loading environment configuration...
+[Config] Audio transcription enabled with gemini
+[Config] Configuration loaded: allowedUsers=1, finalMessageLineLimit=100, stepUpdateIntervalMs=500
+[Bot] Telegram bot polling started successfully
+[Bot] No active chat yet; skipping startup message
+[Bot] /new command received
+[TelegramRemote] Session created: ses_4283
+[Bot] sendTemporaryMessage: "✅ Session initialized: ses_4283..." (duration: 10000ms)
+[TelegramRemote] Session title updated: New session - 2026-01-19T19:36:44.518Z
+[Bot] sendMessage: "✅ Session created: ses_4283d8919ffeW3unhTu3RfxOG5..."
+[Bot] Text message received: "is there an opencode process running on this machi..."
+[TelegramRemote] Session title updated: New session - 2026-01-19T19:36:44.518Z
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session title updated: New session - 2026-01-19T19:36:44.518Z
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session title updated: New session - 2026-01-19T19:36:44.518Z
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session title updated: Check for opencode process
+[Config] Loading environment configuration...
+[Config] Audio transcription enabled with gemini
+[Config] Configuration loaded: allowedUsers=1, finalMessageLineLimit=100, stepUpdateIntervalMs=500
+[Bot] sendMessage: "Yes, there is an `opencode` process running on thi..."
+[Bot] sendMessage: "Yes, there is an `opencode` process running on thi..."
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session status updated: idle
+[TelegramRemote] Session is idle. Sending finished notification.
+[Bot] sendTemporaryMessage: "Agent has finished...." (duration: 10000ms)
+[TelegramRemote] Session title updated: Check for opencode process
+[Bot] deleteMessage 18
+[Bot] Text message received: "can you create a restart.sh bash script that kills..."
+[TelegramRemote] Session title updated: Check for opencode process
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session title updated: Check for opencode process
+[Bot] sendMessage: "Yes, there is an `opencode` process running on thi..."
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session status updated: busy
+[TelegramRemote] Session title updated: Check for opencode process

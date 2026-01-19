@@ -31,6 +31,7 @@ export class GlobalStateStore {
   public lastUpdateDelta: Map<string, string> = new Map();
   private todos: TodoItem[] = [];
   private activeSessionId: string | null = null;
+  private activeChatId: number | null = null;
   private sessionTitles: Map<string, string> = new Map();
 
   constructor(allowedEventTypes: string[]) {
@@ -52,6 +53,18 @@ export class GlobalStateStore {
 
   getActiveSession(): string | null {
     return this.activeSessionId;
+  }
+
+  setActiveChatId(chatId: number): void {
+    this.activeChatId = chatId;
+  }
+
+  getActiveChatId(): number | null {
+    return this.activeChatId;
+  }
+
+  clearActiveChatId(): void {
+    this.activeChatId = null;
   }
 
   clearActiveSession(): void {

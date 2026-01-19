@@ -10,7 +10,7 @@ export function createMessageTextHandler({
 }: CommandDeps) {
   return async (ctx: Context) => {
     console.log(`[Bot] Text message received: "${ctx.message?.text?.slice(0, 50)}..."`);
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     if (ctx.message?.text?.startsWith("/")) return;
 
     let sessionId = globalStateStore.getActiveSession();

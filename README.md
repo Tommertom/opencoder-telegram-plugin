@@ -17,8 +17,7 @@ Control OpenCode sessions remotely via Telegram in a single chat.
 - Node.js 18+
 - OpenCode CLI installed
 - Telegram Bot (from [@BotFather](https://t.me/BotFather))
-- Private Telegram Group or Chat
-- Bot must be admin in the group (if using a group)
+- Direct private chat with your bot
 
 ## Installation
 
@@ -28,15 +27,11 @@ Control OpenCode sessions remotely via Telegram in a single chat.
 2. Create a new bot with `/newbot`
 3. Save the bot token
 
-### 2. Setup Telegram Group
+### 2. Start a Private Chat with the Bot
 
-1. Create a new **Group** or use an existing private group in Telegram
-2. Make it **private**
-3. Add your bot as admin with all permissions
-4. Get the group ID:
-   - Add [@userinfobot](https://t.me/userinfobot) to the group
-   - It will show the group ID (numeric, usually negative)
-   - Remove the bot after getting the ID
+1. Open your bot in Telegram
+2. Tap **Start**
+3. Send any message to establish the chat
 
 ### 3. Get Your User ID
 
@@ -58,7 +53,6 @@ Create `.env` file in the plugin directory:
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
-TELEGRAM_GROUP_ID=-1001234567890
 TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
 ```
 
@@ -173,14 +167,14 @@ These states are used to coordinate between the Telegram bot interface and the O
 
 ### Best Practices
 
-1. Use a **private** Telegram Supergroup
+1. Use a **private** chat with the bot
 2. Keep the bot token secret
 3. Only add trusted users to whitelist
 4. Review `.env` file permissions (should be readable only by you)
 
 ### What's NOT Supported
 
-- ❌ Public groups (use private groups only)
+- ❌ Public chats
 - ❌ Webhooks (uses long polling)
 - ❌ Persistent sessions (memory only)
 - ❌ Multiple concurrent sessions (one active session at a time)
@@ -193,7 +187,6 @@ These states are used to coordinate between the Telegram bot interface and the O
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from @BotFather | `123456:ABC-DEF...` |
-| `TELEGRAM_GROUP_ID` | ✅ | Numeric group ID (usually negative) | `-1001234567890` |
 | `TELEGRAM_ALLOWED_USER_IDS` | ✅ | Comma-separated user IDs | `123456789,987654321` |
 
 ### OpenCode Plugin Configuration
@@ -214,8 +207,8 @@ These states are used to coordinate between the Telegram bot interface and the O
 ### Bot doesn't respond
 
 - Verify bot token is correct
-- Check bot is admin in the group
 - Confirm your user ID is in whitelist
+- Ensure you've started a private chat with the bot
 - Check OpenCode logs for errors
 
 ### Session not found

@@ -25,7 +25,7 @@ function formatTodoLine(todo: TodoItem): string {
 export function createTodosCommandHandler({ config, bot, globalStateStore }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /todos command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     const todos = globalStateStore.getTodos();
     if (todos.length === 0) {

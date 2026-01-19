@@ -128,7 +128,6 @@ Required in `.env`:
 | Variable | Description |
 |----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
-| `TELEGRAM_GROUP_ID` | Numeric group ID (negative) |
 | `TELEGRAM_ALLOWED_USER_IDS` | Comma-separated user IDs |
 
 **Never commit `.env` files or secrets.**

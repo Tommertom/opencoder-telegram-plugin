@@ -16,20 +16,10 @@ function parseAllowedUserIds(value) {
 function loadConfig() {
   console.log("[Config] Loading environment configuration...");
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const groupId = process.env.TELEGRAM_GROUP_ID;
   const allowedUserIdsStr = process.env.TELEGRAM_ALLOWED_USER_IDS;
   if (!botToken || botToken.trim() === "") {
     console.error("[Config] Missing TELEGRAM_BOT_TOKEN");
     throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
-  }
-  if (!groupId || groupId.trim() === "") {
-    console.error("[Config] Missing TELEGRAM_GROUP_ID");
-    throw new Error("Missing required environment variable: TELEGRAM_GROUP_ID");
-  }
-  const parsedGroupId = Number.parseInt(groupId, 10);
-  if (Number.isNaN(parsedGroupId)) {
-    console.error("[Config] Invalid TELEGRAM_GROUP_ID (not a number)");
-    throw new Error("TELEGRAM_GROUP_ID must be a valid number");
   }
   const allowedUserIds = parseAllowedUserIds(allowedUserIdsStr);
   if (allowedUserIds.length === 0) {
@@ -67,11 +57,10 @@ function loadConfig() {
     }
   }
   console.log(
-    `[Config] Configuration loaded: groupId=${parsedGroupId}, allowedUsers=${allowedUserIds.length}, finalMessageLineLimit=${finalMessageLineLimit}, stepUpdateIntervalMs=${stepUpdateIntervalMs}`
+    `[Config] Configuration loaded: allowedUsers=${allowedUserIds.length}, finalMessageLineLimit=${finalMessageLineLimit}, stepUpdateIntervalMs=${stepUpdateIntervalMs}`
   );
   return {
     botToken,
-    groupId: parsedGroupId,
     allowedUserIds,
     finalMessageLineLimit,
     stepUpdateIntervalMs,

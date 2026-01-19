@@ -5,7 +5,7 @@ import type { CommandDeps } from "./types.js";
 export function createEscCommandHandler({ config, client, logger, globalStateStore }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /esc command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     // Enforce authorization explicitly so middleware cannot be bypassed
     const userId = ctx.from?.id;

@@ -10,7 +10,7 @@ export function createAgentsCommandHandler({
 }: CommandDeps) {
   return async (ctx: Context) => {
     console.log("[Bot] /agents command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
 
     try {
       // Fetch agents from the app namespace

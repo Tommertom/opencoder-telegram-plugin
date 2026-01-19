@@ -4,7 +4,7 @@
  */
 import {
   loadConfig
-} from "./chunk-7HUHEESI.js";
+} from "./chunk-B3VKDYYM.js";
 
 // src/bot.ts
 import { Bot, InputFile } from "grammy";
@@ -12,11 +12,11 @@ import { Bot, InputFile } from "grammy";
 // src/callbacks/agents-callback.command.ts
 var createAgentsCallbackHandler = (deps) => async (ctx) => {
   if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
+  if (ctx.chat?.type !== "private") return;
   const data = ctx.callbackQuery.data;
   if (!data.startsWith("agent:")) return;
   const agentName = data.replace("agent:", "");
   if (!agentName) return;
-  if (ctx.chat?.id !== deps.config.groupId) return;
   const availableAgents = deps.globalStateStore.getAgents();
   const selectedAgent = availableAgents.find((agent) => agent.name === agentName);
   if (!selectedAgent) {
@@ -38,6 +38,7 @@ var createAgentsCallbackHandler = (deps) => async (ctx) => {
 import { InlineKeyboard } from "grammy";
 var createQuestionCallbackHandler = (deps) => async (ctx) => {
   if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
+  if (ctx.chat?.type !== "private") return;
   const data = ctx.callbackQuery.data;
   if (data.startsWith("session:")) {
     const sessionId = data.replace("session:", "").trim();
@@ -135,8 +136,12 @@ ${question.question}
 ${nextQuestion.question}
 
 ${nextQuestion.options.map((o) => `\u2022 *${o.label}*: ${o.description}`).join("\n")}`;
+    const chatId = ctx.chat?.id;
+    if (!chatId) {
+      return;
+    }
     const result = await deps.queue.enqueue(
-      () => ctx.api.sendMessage(deps.config.groupId, messageText, {
+      () => ctx.api.sendMessage(chatId, messageText, {
         parse_mode: "Markdown",
         reply_markup: keyboard
       })
@@ -256,7 +261,7 @@ function createAudioMessageHandler({
       );
       return;
     }
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     const voice = ctx.message?.voice;
     const audio = ctx.message?.audio;
     const fileToDownload = voice || audio;
@@ -298,7 +303,9 @@ function createAudioMessageHandler({
         mimeType,
         logger
       );
-      await ctx.api.deleteMessage(config.groupId, processingMsg.message_id);
+      if (ctx.chat?.id) {
+        await ctx.api.deleteMessage(ctx.chat.id, processingMsg.message_id);
+      }
       if (result.error || !result.text.trim()) {
         await ctx.reply(`\u274C Transcription failed: ${result.error || "Empty transcription"}`);
         return;
@@ -354,7 +361,7 @@ function createAgentsCommandHandler({
 }) {
   return async (ctx) => {
     console.log("[Bot] /agents command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     try {
       const agentsResponse = await client.app.agents();
       if (agentsResponse.error) {
@@ -404,7 +411,7 @@ function createDeleteSessionsCommandHandler({
 }) {
   return async (ctx) => {
     console.log("[Bot] /deletesessions command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     let deletedSessions = 0;
     let failedSessions = 0;
     try {
@@ -490,7 +497,7 @@ function getDefaultKeyboardOptions() {
 function createEscCommandHandler({ config, client, logger, globalStateStore }) {
   return async (ctx) => {
     console.log("[Bot] /esc command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     const userId = ctx.from?.id;
     if (!userId || !config.allowedUserIds.includes(userId)) {
       console.log(`[Bot] /esc attempt by unauthorized user ${userId}`);
@@ -532,7 +539,7 @@ function createEscCommandHandler({ config, client, logger, globalStateStore }) {
 function createHelpCommandHandler({ config }) {
   return async (ctx) => {
     console.log("[Bot] /help command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     const userId = ctx.from?.id;
     if (!userId || !config.allowedUserIds.includes(userId)) {
       console.log(`[Bot] /help attempt by unauthorized user ${userId}`);
@@ -553,7 +560,7 @@ function createMessageTextHandler({
 }) {
   return async (ctx) => {
     console.log(`[Bot] Text message received: "${ctx.message?.text?.slice(0, 50)}..."`);
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     if (ctx.message?.text?.startsWith("/")) return;
     let sessionId = globalStateStore.getActiveSession();
     if (!sessionId) {
@@ -616,7 +623,7 @@ function createNewCommandHandler({
 }) {
   return async (ctx) => {
     console.log("[Bot] /new command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     try {
       const createSessionResponse = await client.session.create({ body: {} });
       if (createSessionResponse.error) {
@@ -667,7 +674,7 @@ function createSessionsCommandHandler({
 }) {
   return async (ctx) => {
     console.log("[Bot] /sessions command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     const arg = typeof ctx.match === "string" ? ctx.match.trim() : "";
     let limit;
     if (arg) {
@@ -719,7 +726,7 @@ function createSessionsCommandHandler({
 function createTabCommandHandler({ config, client, logger, globalStateStore }) {
   return async (ctx) => {
     console.log("[Bot] /tab command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     const userId = ctx.from?.id;
     if (!userId || !config.allowedUserIds.includes(userId)) {
       console.log(`[Bot] /tab attempt by unauthorized user ${userId}`);
@@ -778,7 +785,7 @@ function formatTodoLine(todo) {
 function createTodosCommandHandler({ config, bot, globalStateStore }) {
   return async (ctx) => {
     console.log("[Bot] /todos command received");
-    if (ctx.chat?.id !== config.groupId) return;
+    if (ctx.chat?.type !== "private") return;
     const todos = globalStateStore.getTodos();
     if (todos.length === 0) {
       await bot.sendTemporaryMessage("No todos currently available.");
@@ -895,7 +902,7 @@ function createTelegramBot(config, client, logger, globalStateStore, questionTra
   if (botInstance) {
     console.log("[Bot] Reusing existing bot instance");
     logger.warn("Bot already initialized, reusing existing instance");
-    return createBotManager(botInstance, config, queue);
+    return createBotManager(botInstance, queue, globalStateStore, logger);
   }
   console.log("[Bot] Creating new Bot instance with token");
   const bot = new Bot(config.botToken);
@@ -908,9 +915,19 @@ function createTelegramBot(config, client, logger, globalStateStore, questionTra
       logger.warn("Unauthorized user attempted access", { userId: ctx.from?.id });
       return;
     }
+    if (ctx.chat?.type !== "private") {
+      logger.warn("Ignoring non-private chat", {
+        chatId: ctx.chat?.id,
+        chatType: ctx.chat?.type
+      });
+      return;
+    }
+    if (ctx.chat?.id) {
+      globalStateStore.setActiveChatId(ctx.chat.id);
+    }
     await next();
   });
-  const manager = createBotManager(bot, config, queue);
+  const manager = createBotManager(bot, queue, globalStateStore, logger);
   const commandDeps = {
     bot: manager,
     config,
@@ -940,7 +957,16 @@ function createTelegramBot(config, client, logger, globalStateStore, questionTra
   console.log("[Bot] All handlers registered, returning bot manager");
   return manager;
 }
-function createBotManager(bot, config, queue) {
+function requireActiveChatId(globalStateStore, logger, action) {
+  const chatId = globalStateStore.getActiveChatId();
+  if (!chatId) {
+    const message = `No active chat available for ${action}. Ask an allowed user to message the bot first.`;
+    logger.warn(message);
+    throw new Error(message);
+  }
+  return chatId;
+}
+function createBotManager(bot, queue, globalStateStore, logger) {
   return {
     async start() {
       console.log("[Bot] start() called - beginning long polling...");
@@ -949,8 +975,13 @@ function createBotManager(bot, config, queue) {
         onStart: async () => {
           console.log("[Bot] Telegram bot polling started successfully");
           try {
-            await sendTemporaryMessage(bot, config.groupId, "Messaging enabled", 1e3, queue);
-            console.log("[Bot] Startup message sent to group");
+            const chatId = globalStateStore.getActiveChatId();
+            if (!chatId) {
+              console.log("[Bot] No active chat yet; skipping startup message");
+              return;
+            }
+            await sendTemporaryMessage(bot, chatId, "Messaging enabled", 1e3, queue);
+            console.log("[Bot] Startup message sent to active chat");
           } catch (error) {
             console.error("[Bot] Failed to send startup message:", error);
           }
@@ -965,28 +996,32 @@ function createBotManager(bot, config, queue) {
     },
     async sendMessage(text, options) {
       console.log(`[Bot] sendMessage: "${text.slice(0, 50)}..."`);
+      const chatId = requireActiveChatId(globalStateStore, logger, "sendMessage");
       const mergedOptions = {
         ...options,
         reply_markup: options?.reply_markup || createDefaultKeyboard()
       };
       const result = await queue.enqueue(
-        () => bot.api.sendMessage(config.groupId, text, mergedOptions)
+        () => bot.api.sendMessage(chatId, text, mergedOptions)
       );
       return { message_id: result.message_id };
     },
     async editMessage(messageId, text) {
       console.log(`[Bot] editMessage ${messageId}: "${text.slice(0, 50)}..."`);
-      await queue.enqueue(() => bot.api.editMessageText(config.groupId, messageId, text));
+      const chatId = requireActiveChatId(globalStateStore, logger, "editMessage");
+      await queue.enqueue(() => bot.api.editMessageText(chatId, messageId, text));
     },
     async deleteMessage(messageId) {
       console.log(`[Bot] deleteMessage ${messageId}`);
-      await queue.enqueue(() => bot.api.deleteMessage(config.groupId, messageId));
+      const chatId = requireActiveChatId(globalStateStore, logger, "deleteMessage");
+      await queue.enqueue(() => bot.api.deleteMessage(chatId, messageId));
     },
     async sendDocument(document, filename) {
       console.log(`[Bot] sendDocument: filename="${filename}"`);
+      const chatId = requireActiveChatId(globalStateStore, logger, "sendDocument");
       await queue.enqueue(
         () => bot.api.sendDocument(
-          config.groupId,
+          chatId,
           new InputFile(typeof document === "string" ? Buffer.from(document) : document, filename)
         )
       );
@@ -995,7 +1030,8 @@ function createBotManager(bot, config, queue) {
       console.log(
         `[Bot] sendTemporaryMessage: "${text.slice(0, 50)}..." (duration: ${durationMs}ms)`
       );
-      await sendTemporaryMessage(bot, config.groupId, text, durationMs, queue, options);
+      const chatId = requireActiveChatId(globalStateStore, logger, "sendTemporaryMessage");
+      await sendTemporaryMessage(bot, chatId, text, durationMs, queue, options);
     },
     queue
   };
@@ -1067,7 +1103,7 @@ async function handleMessagePartUpdated(event, context) {
     }
     if (part.time && typeof part.time.end !== "undefined" && part.time.end !== null) {
       try {
-        const { loadConfig: loadConfig2 } = await import("./config-OCWUWXPV.js");
+        const { loadConfig: loadConfig2 } = await import("./config-FBYHFLNL.js");
         const cfg = loadConfig2();
         const lineCount = text.split(/\r?\n/).length;
         if (lineCount > cfg.finalMessageLineLimit) {
@@ -1226,6 +1262,7 @@ var GlobalStateStore = class {
   lastUpdateDelta = /* @__PURE__ */ new Map();
   todos = [];
   activeSessionId = null;
+  activeChatId = null;
   sessionTitles = /* @__PURE__ */ new Map();
   constructor(allowedEventTypes) {
     this.allowedEventTypes = new Set(allowedEventTypes);
@@ -1242,6 +1279,15 @@ var GlobalStateStore = class {
   }
   getActiveSession() {
     return this.activeSessionId;
+  }
+  setActiveChatId(chatId) {
+    this.activeChatId = chatId;
+  }
+  getActiveChatId() {
+    return this.activeChatId;
+  }
+  clearActiveChatId() {
+    this.activeChatId = null;
   }
   clearActiveSession() {
     this.activeSessionId = null;
