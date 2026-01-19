@@ -1,5 +1,8 @@
 import { Bot, type Context, InputFile, Keyboard } from "grammy";
-import { createAgentsCallbackHandler } from "./commands/agents-callback.command.js";
+import {
+  createAgentsCallbackHandler,
+  createQuestionCallbackHandler,
+} from "./callbacks/index.js";
 import { createAudioMessageHandler } from "./commands/audio-message.command.js";
 import {
   createAgentsCommandHandler,
@@ -12,7 +15,6 @@ import {
   createTabCommandHandler,
   createTodosCommandHandler,
 } from "./commands/index.js";
-import { createQuestionCallbackHandler } from "./commands/question-callback.command.js";
 import type { Config } from "./config.js";
 import type { GlobalStateStore } from "./global-state-store.js";
 import { createDefaultKeyboard } from "./lib/keyboard.js";

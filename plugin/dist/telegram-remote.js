@@ -6,7 +6,7 @@
 // src/bot.ts
 import { Bot, InputFile } from "grammy";
 
-// src/commands/agents-callback.command.ts
+// src/callbacks/agents-callback.command.ts
 var createAgentsCallbackHandler = (deps) => async (ctx) => {
   if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
   const data = ctx.callbackQuery.data;
@@ -30,6 +30,138 @@ var createAgentsCallbackHandler = (deps) => async (ctx) => {
     await deps.bot.sendTemporaryMessage(`\u2705 Active agent set to ${selectedAgent.name}`, 3e3);
   }
 };
+
+// src/callbacks/question-callback.command.ts
+import { InlineKeyboard } from "grammy";
+var createQuestionCallbackHandler = (deps) => async (ctx) => {
+  if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
+  const data = ctx.callbackQuery.data;
+  if (data.startsWith("session:")) {
+    const sessionId = data.replace("session:", "").trim();
+    if (!sessionId) return;
+    deps.globalStateStore.setActiveSession(sessionId);
+    const sessionTitle = deps.globalStateStore.getSessionTitle(sessionId);
+    const label = sessionTitle ?? sessionId;
+    await ctx.answerCallbackQuery({ text: `Active session set: ${label}` });
+    await deps.bot.sendTemporaryMessage(`\u2705 Active session set: ${label}`, 3e3);
+    return;
+  }
+  if (!data.startsWith("q:")) return;
+  const parts = data.split(":");
+  if (parts.length !== 4) return;
+  const [_, questionId, questionIndexStr, action] = parts;
+  const questionIndex = parseInt(questionIndexStr, 10);
+  const session = deps.questionTracker.getActiveQuestionSession(questionId);
+  if (!session) {
+    await ctx.answerCallbackQuery({ text: "Question session expired or invalid." });
+    return;
+  }
+  const question = session.questions[questionIndex];
+  if (!question) return;
+  let currentAnswers = session.answers[questionIndex] || [];
+  if (action === "done") {
+    if (currentAnswers.length === 0) {
+      await ctx.answerCallbackQuery({ text: "Please select at least one option." });
+      return;
+    }
+    await proceedToNext(ctx, deps, questionId, questionIndex);
+  } else {
+    const optionIndex = parseInt(action, 10);
+    const option = question.options[optionIndex];
+    if (!option) return;
+    if (question.multiple) {
+      if (currentAnswers.includes(option.label)) {
+        currentAnswers = currentAnswers.filter((a) => a !== option.label);
+      } else {
+        currentAnswers.push(option.label);
+      }
+    } else {
+      currentAnswers = [option.label];
+    }
+    deps.questionTracker.recordAnswer(questionId, questionIndex, currentAnswers);
+    if (!question.multiple) {
+      await ctx.answerCallbackQuery();
+      await proceedToNext(ctx, deps, questionId, questionIndex);
+    } else {
+      const keyboard = new InlineKeyboard();
+      question.options.forEach((opt, idx) => {
+        const isSelected = currentAnswers.includes(opt.label);
+        const icon = isSelected ? "\u2611 " : "\u2610 ";
+        keyboard.text(`${icon}${opt.label}`, `q:${questionId}:${questionIndex}:${idx}`).row();
+      });
+      keyboard.text("Done", `q:${questionId}:${questionIndex}:done`);
+      try {
+        await ctx.editMessageReplyMarkup({ reply_markup: keyboard });
+      } catch (error) {
+      }
+      await ctx.answerCallbackQuery();
+    }
+  }
+};
+async function proceedToNext(ctx, deps, questionId, currentIndex) {
+  const session = deps.questionTracker.getActiveQuestionSession(questionId);
+  if (!session) return;
+  const question = session.questions[currentIndex];
+  const answers = session.answers[currentIndex] || [];
+  try {
+    await ctx.editMessageText(
+      `\u2753 *${question.header}*
+
+${question.question}
+
+\u2705 *Answered*: ${answers.join(", ")}`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (e) {
+    console.error("Failed to edit question message:", e);
+  }
+  const nextIndex = currentIndex + 1;
+  if (nextIndex < session.questions.length) {
+    const nextQuestion = session.questions[nextIndex];
+    const isMultiple = nextQuestion.multiple ?? false;
+    const keyboard = new InlineKeyboard();
+    nextQuestion.options.forEach((option, optionIndex) => {
+      const icon = isMultiple ? "\u2610 " : "";
+      keyboard.text(`${icon}${option.label}`, `q:${questionId}:${nextIndex}:${optionIndex}`).row();
+    });
+    if (isMultiple) {
+      keyboard.text("Done", `q:${questionId}:${nextIndex}:done`);
+    }
+    const messageText = `\u2753 *${nextQuestion.header}*
+
+${nextQuestion.question}
+
+${nextQuestion.options.map((o) => `\u2022 *${o.label}*: ${o.description}`).join("\n")}`;
+    const result = await deps.queue.enqueue(
+      () => ctx.api.sendMessage(deps.config.groupId, messageText, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard
+      })
+    );
+    session.telegramMessageIds.push(result.message_id);
+    session.currentQuestionIndex = nextIndex;
+    deps.questionTracker.updateQuestionSession(questionId, session);
+  } else {
+    try {
+      await deps.client.tui.control.response({
+        body: {
+          type: "question.replied",
+          properties: {
+            sessionID: session.sessionId,
+            requestID: questionId,
+            answers: session.answers
+          }
+        }
+      });
+      await deps.bot.sendTemporaryMessage("\u2705 Answers submitted successfully!", 3e3);
+    } catch (error) {
+      console.error("Failed to submit answers:", error);
+      await deps.bot.sendMessage(`\u274C Failed to submit answers: ${error}`);
+    } finally {
+      deps.questionTracker.clearQuestionSession(questionId);
+    }
+  }
+}
 
 // src/commands/audio-message.command.ts
 import { mkdir, writeFile } from "fs/promises";
@@ -207,7 +339,7 @@ function createAudioMessageHandler({
 }
 
 // src/commands/agents.ts
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard as InlineKeyboard2 } from "grammy";
 function createAgentsCommandHandler({
   config,
   client,
@@ -241,7 +373,7 @@ function createAgentsCommandHandler({
         await bot.sendTemporaryMessage("No primary agents found.");
         return;
       }
-      const keyboard = new InlineKeyboard();
+      const keyboard = new InlineKeyboard2();
       primaryAgents.forEach((agent) => {
         const isSelected = agent.name === defaultAgent ? "\u2705 " : "";
         keyboard.text(`${isSelected}${agent.name}`, `agent:${agent.name}`).row();
@@ -499,7 +631,7 @@ function createNewCommandHandler({
 }
 
 // src/commands/sessions.ts
-import { InlineKeyboard as InlineKeyboard2 } from "grammy";
+import { InlineKeyboard as InlineKeyboard3 } from "grammy";
 function getSessionInfo(session) {
   return session.properties?.info ?? session;
 }
@@ -561,7 +693,7 @@ function createSessionsCommandHandler({
       if (limit) {
         sessions = sessions.slice(0, limit);
       }
-      const keyboard = new InlineKeyboard2();
+      const keyboard = new InlineKeyboard3();
       sessions.forEach((session) => {
         const label = getSessionLabel(session);
         globalStateStore.setSessionTitle(session.id, label);
@@ -651,138 +783,6 @@ function createTodosCommandHandler({ config, bot, globalStateStore }) {
 ${lines.join("\n")}`;
     await bot.sendTemporaryMessage(message, 3e4);
   };
-}
-
-// src/commands/question-callback.command.ts
-import { InlineKeyboard as InlineKeyboard3 } from "grammy";
-var createQuestionCallbackHandler = (deps) => async (ctx) => {
-  if (!ctx.callbackQuery || !ctx.callbackQuery.data) return;
-  const data = ctx.callbackQuery.data;
-  if (data.startsWith("session:")) {
-    const sessionId = data.replace("session:", "").trim();
-    if (!sessionId) return;
-    deps.globalStateStore.setActiveSession(sessionId);
-    const sessionTitle = deps.globalStateStore.getSessionTitle(sessionId);
-    const label = sessionTitle ?? sessionId;
-    await ctx.answerCallbackQuery({ text: `Active session set: ${label}` });
-    await deps.bot.sendTemporaryMessage(`\u2705 Active session set: ${label}`, 3e3);
-    return;
-  }
-  if (!data.startsWith("q:")) return;
-  const parts = data.split(":");
-  if (parts.length !== 4) return;
-  const [_, questionId, questionIndexStr, action] = parts;
-  const questionIndex = parseInt(questionIndexStr, 10);
-  const session = deps.questionTracker.getActiveQuestionSession(questionId);
-  if (!session) {
-    await ctx.answerCallbackQuery({ text: "Question session expired or invalid." });
-    return;
-  }
-  const question = session.questions[questionIndex];
-  if (!question) return;
-  let currentAnswers = session.answers[questionIndex] || [];
-  if (action === "done") {
-    if (currentAnswers.length === 0) {
-      await ctx.answerCallbackQuery({ text: "Please select at least one option." });
-      return;
-    }
-    await proceedToNext(ctx, deps, questionId, questionIndex);
-  } else {
-    const optionIndex = parseInt(action, 10);
-    const option = question.options[optionIndex];
-    if (!option) return;
-    if (question.multiple) {
-      if (currentAnswers.includes(option.label)) {
-        currentAnswers = currentAnswers.filter((a) => a !== option.label);
-      } else {
-        currentAnswers.push(option.label);
-      }
-    } else {
-      currentAnswers = [option.label];
-    }
-    deps.questionTracker.recordAnswer(questionId, questionIndex, currentAnswers);
-    if (!question.multiple) {
-      await ctx.answerCallbackQuery();
-      await proceedToNext(ctx, deps, questionId, questionIndex);
-    } else {
-      const keyboard = new InlineKeyboard3();
-      question.options.forEach((opt, idx) => {
-        const isSelected = currentAnswers.includes(opt.label);
-        const icon = isSelected ? "\u2611 " : "\u2610 ";
-        keyboard.text(`${icon}${opt.label}`, `q:${questionId}:${questionIndex}:${idx}`).row();
-      });
-      keyboard.text("Done", `q:${questionId}:${questionIndex}:done`);
-      try {
-        await ctx.editMessageReplyMarkup({ reply_markup: keyboard });
-      } catch (error) {
-      }
-      await ctx.answerCallbackQuery();
-    }
-  }
-};
-async function proceedToNext(ctx, deps, questionId, currentIndex) {
-  const session = deps.questionTracker.getActiveQuestionSession(questionId);
-  if (!session) return;
-  const question = session.questions[currentIndex];
-  const answers = session.answers[currentIndex] || [];
-  try {
-    await ctx.editMessageText(
-      `\u2753 *${question.header}*
-
-${question.question}
-
-\u2705 *Answered*: ${answers.join(", ")}`,
-      { parse_mode: "Markdown" }
-    );
-  } catch (e) {
-    console.error("Failed to edit question message:", e);
-  }
-  const nextIndex = currentIndex + 1;
-  if (nextIndex < session.questions.length) {
-    const nextQuestion = session.questions[nextIndex];
-    const isMultiple = nextQuestion.multiple ?? false;
-    const keyboard = new InlineKeyboard3();
-    nextQuestion.options.forEach((option, optionIndex) => {
-      const icon = isMultiple ? "\u2610 " : "";
-      keyboard.text(`${icon}${option.label}`, `q:${questionId}:${nextIndex}:${optionIndex}`).row();
-    });
-    if (isMultiple) {
-      keyboard.text("Done", `q:${questionId}:${nextIndex}:done`);
-    }
-    const messageText = `\u2753 *${nextQuestion.header}*
-
-${nextQuestion.question}
-
-${nextQuestion.options.map((o) => `\u2022 *${o.label}*: ${o.description}`).join("\n")}`;
-    const result = await deps.queue.enqueue(
-      () => ctx.api.sendMessage(deps.config.groupId, messageText, {
-        parse_mode: "Markdown",
-        reply_markup: keyboard
-      })
-    );
-    session.telegramMessageIds.push(result.message_id);
-    session.currentQuestionIndex = nextIndex;
-    deps.questionTracker.updateQuestionSession(questionId, session);
-  } else {
-    try {
-      await deps.client.tui.control.response({
-        body: {
-          type: "question.replied",
-          properties: {
-            sessionID: session.sessionId,
-            requestID: questionId,
-            answers: session.answers
-          }
-        }
-      });
-      await deps.bot.sendTemporaryMessage("\u2705 Answers submitted successfully!", 3e3);
-    } catch (error) {
-      console.error("Failed to submit answers:", error);
-      await deps.bot.sendMessage(`\u274C Failed to submit answers: ${error}`);
-    } finally {
-      deps.questionTracker.clearQuestionSession(questionId);
-    }
-  }
 }
 
 // src/lib/telegram-queue.ts
@@ -1076,51 +1076,40 @@ async function handleMessagePartUpdated(event, context) {
   if (part.type === "text") {
     const text = part.text;
     context.globalStateStore.setLastMessagePartUpdate(text);
+    if (typeof event.properties.delta !== "undefined" && event.properties.delta !== null) {
+      if (part.sessionID) {
+        try {
+          context.globalStateStore.setLastUpdate(part.sessionID, text);
+          context.globalStateStore.setLastUpdateDelta(part.sessionID, event.properties.delta);
+          logger.info("Stored lastUpdate and lastUpdateDelta", { sessionID: part.sessionID, delta: event.properties.delta });
+        } catch (err) {
+          logger.warn("Failed to store last update data", { error: String(err) });
+        }
+      } else {
+        logger.warn("Delta message received but missing sessionID");
+      }
+    }
+    if (part.time && typeof part.time.end !== "undefined" && part.time.end !== null) {
+      try {
+        await context.bot.sendMessage(text);
+        if (part.sessionID) {
+          try {
+            context.globalStateStore.setLastSendFinalMessage(part.sessionID, text);
+            logger.info("Stored lastSendFinalMessage", { sessionID: part.sessionID });
+          } catch (err) {
+            logger.warn("Failed to store lastSendFinalMessage", { error: String(err) });
+          }
+        }
+        logger.info("Message part sent to Telegram", { text: text.substring(0, 100) });
+      } catch (error) {
+        logger.error("Failed to send message part to Telegram", { error: String(error) });
+      }
+    }
   }
 }
 
 // src/events/message-updated.ts
 async function handleMessageUpdated(event, context) {
-  const logger = createLogger(context.client);
-  const message = event.properties.info;
-  console.log(`[TelegramRemote] Message updated: ${message.id}, role: ${message.role}`);
-  if (message.summary?.body) {
-    console.log(`[TelegramRemote] Sending summary body for message ${message.id}`);
-    try {
-      await context.bot.sendTemporaryMessage(message.summary.body);
-      console.log(`[TelegramRemote] Summary body sent and will be deleted after timeout`);
-    } catch (error) {
-      console.error("[TelegramRemote] Failed to send summary body:", error);
-      logger.error("Failed to send summary body", { error: String(error) });
-    }
-  }
-  if (message.role === "assistant" && message.time?.completed) {
-    if (message.content) {
-      context.globalStateStore.setLastResponse(message.content);
-      const lines = message.content.split("\n");
-      if (lines.length > 100) {
-        console.log(
-          `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as Markdown file.`
-        );
-        try {
-          await context.bot.sendDocument(message.content, "response.md");
-        } catch (error) {
-          console.error("[TelegramRemote] Failed to send document:", error);
-          logger.error("Failed to send document", { error: String(error) });
-        }
-      } else {
-        console.log(
-          `[TelegramRemote] Message ${message.id} completed with ${lines.length} lines. Sending as text.`
-        );
-        try {
-          await context.bot.sendMessage(message.content);
-        } catch (error) {
-          console.error("[TelegramRemote] Failed to send message:", error);
-          logger.error("Failed to send message", { error: String(error) });
-        }
-      }
-    }
-  }
 }
 
 // src/events/question-asked.ts
@@ -1177,6 +1166,37 @@ async function handleSessionStatus(event, context) {
   if (statusType && context.globalStateStore) {
     context.globalStateStore.setSessionStatus(statusType);
     console.log(`[TelegramRemote] Session status updated: ${statusType}`);
+    if (statusType === "idle") {
+      console.log(`[TelegramRemote] Session is idle. Sending finished notification.`);
+      try {
+        await context.bot.sendTemporaryMessage("Agent has finished.");
+      } catch (error) {
+        console.error("[TelegramRemote] Failed to send idle notification:", error);
+      }
+    }
+    if (statusType === "completed") {
+      const lastResponse = context.globalStateStore.getLastResponse();
+      const lastSent = context.globalStateStore.getLastResponseSentContent();
+      if (lastResponse && lastResponse !== lastSent) {
+        console.log(`[TelegramRemote] Session completed. Sending final response.`);
+        context.globalStateStore.setLastResponseSentContent(lastResponse);
+        try {
+          const lines = lastResponse.split("\n");
+          if (lines.length > 100) {
+            await context.bot.sendDocument(lastResponse, "response.md");
+          } else {
+            await context.bot.sendMessage(lastResponse);
+          }
+        } catch (error) {
+          console.error("[TelegramRemote] Failed to send final response:", error);
+        }
+      } else if (!lastResponse) {
+        console.log(`[TelegramRemote] Session completed but no last response found.`);
+        await context.bot.sendTemporaryMessage("Task completed.");
+      } else {
+        console.log(`[TelegramRemote] Session completed. Last response already sent.`);
+      }
+    }
   }
 }
 
@@ -1214,6 +1234,13 @@ var GlobalStateStore = class {
   sessionStatus = null;
   lastMessagePartUpdate = null;
   lastResponse = null;
+  lastResponseSentContent = null;
+  // Map storing the last sent final message per sessionID
+  lastSendFinalMessage = /* @__PURE__ */ new Map();
+  // Map storing the last update text per sessionID when delta updates arrive
+  lastUpdate = /* @__PURE__ */ new Map();
+  // Map storing the last delta payload per sessionID
+  lastUpdateDelta = /* @__PURE__ */ new Map();
   todos = [];
   activeSessionId = null;
   sessionTitles = /* @__PURE__ */ new Map();
@@ -1299,6 +1326,33 @@ var GlobalStateStore = class {
   }
   getLastResponse() {
     return this.lastResponse;
+  }
+  setLastResponseSentContent(text) {
+    this.lastResponseSentContent = text;
+  }
+  getLastResponseSentContent() {
+    return this.lastResponseSentContent;
+  }
+  setLastSendFinalMessage(sessionId, text) {
+    if (!sessionId) return;
+    this.lastSendFinalMessage.set(sessionId, text);
+  }
+  getLastSendFinalMessage(sessionId) {
+    return this.lastSendFinalMessage.get(sessionId) ?? null;
+  }
+  setLastUpdate(sessionId, text) {
+    if (!sessionId) return;
+    this.lastUpdate.set(sessionId, text);
+  }
+  getLastUpdate(sessionId) {
+    return this.lastUpdate.get(sessionId) ?? null;
+  }
+  setLastUpdateDelta(sessionId, delta) {
+    if (!sessionId) return;
+    this.lastUpdateDelta.set(sessionId, delta);
+  }
+  getLastUpdateDelta(sessionId) {
+    return this.lastUpdateDelta.get(sessionId) ?? null;
   }
   setTodos(todos) {
     this.todos = [...todos];
