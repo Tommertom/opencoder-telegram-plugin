@@ -65,7 +65,7 @@ async function transcribeWithGemini(
 
     // Generate transcription
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: createUserContent([
         createPartFromUri(uploadedFile.uri || "", uploadedFile.mimeType || "audio/ogg"),
         "Transcribe this audio file. Return only the transcribed text without any additional formatting, explanations, or markdown.",
