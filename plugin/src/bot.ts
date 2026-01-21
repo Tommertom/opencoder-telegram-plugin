@@ -2,11 +2,11 @@ import { Bot, type Context, InputFile, Keyboard } from "grammy";
 import {
   createAgentsCallbackHandler,
   createModelsCallbackHandler,
+  createSessionsCallbackHandler,
 } from "./callbacks/index.js";
-import { createAudioMessageHandler } from "./commands/audio-message.command.js";
 import {
   createAgentsCommandHandler,
-  createDeleteSessionsCommandHandler,
+  createAudioMessageHandler,
   createEscCommandHandler,
   createHelpCommandHandler,
   createMessageTextHandler,
@@ -101,7 +101,6 @@ export function createTelegramBot(
 
   bot.command("new", createNewCommandHandler(commandDeps));
   bot.command("projects", createProjectsCommandHandler(commandDeps));
-  bot.command("deletesessions", createDeleteSessionsCommandHandler(commandDeps));
   bot.command("sessions", createSessionsCommandHandler(commandDeps));
   bot.command("agents", createAgentsCommandHandler(commandDeps));
   bot.command("models", createModelsCommandHandler(commandDeps));
@@ -117,6 +116,7 @@ export function createTelegramBot(
   // Register callback query handlers
   bot.callbackQuery(/^agent:/, createAgentsCallbackHandler(commandDeps));
   bot.callbackQuery(/^model:/, createModelsCallbackHandler(commandDeps));
+  bot.callbackQuery(/^session:/, createSessionsCallbackHandler(commandDeps));
 
   bot.catch((error) => {
     console.error("[Bot] Bot error caught:", error);
