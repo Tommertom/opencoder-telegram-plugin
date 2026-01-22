@@ -47,7 +47,7 @@ export async function handleMessagePartUpdated(
         if (lineCount > context.config.finalMessageLineLimit) {
           await context.bot.sendDocument(text, "response.md");
         } else {
-          await context.bot.sendMessage(text);
+          await context.bot.sendTemporaryMessage(text);
         }
 
         // Store the sent message in global state keyed by sessionID
@@ -65,7 +65,5 @@ export async function handleMessagePartUpdated(
         logger.error("Failed to send message part to Telegram", { error: String(error) });
       }
     }
-
-    // console.log(`[TelegramRemote] Message part updated: ${text.substring(0, 50)}...`);
   }
 }

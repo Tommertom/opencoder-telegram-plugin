@@ -602,9 +602,13 @@ function createProjectsCommandHandler({ client, logger, bot }) {
         await bot.sendTemporaryMessage("No projects found.");
         return;
       }
+      const currentProjectResponse = await client.project.current();
+      const currentProject = currentProjectResponse.data;
       const message = projects.map((p, index) => {
         const name = p.worktree.split("/").pop() || p.worktree;
-        return `${index + 1}. *${name}*
+        const isCurrent = p.worktree === currentProject?.worktree;
+        const marker = isCurrent ? "\u2605 " : "";
+        return `${index + 1}. ${marker}*${name}*
    \`${p.worktree}\``;
       }).join("\n\n");
       await bot.sendMessage(`*Projects (${projects.length})*:

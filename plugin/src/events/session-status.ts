@@ -36,7 +36,7 @@ export async function handleSessionStatus(event: any, context: EventHandlerConte
           if (lines.length > 100) {
             await context.bot.sendDocument(lastResponse, "response.md");
           } else {
-            await context.bot.sendMessage(lastResponse);
+            await context.bot.sendMessage('Final' + lastResponse);
           }
         } catch (error) {
           console.error("[TelegramRemote] Failed to send final response:", error);

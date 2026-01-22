@@ -34,7 +34,13 @@ export function createAgentsCommandHandler({
       }
 
       const agents = agentsResponse.data || [];
-      const primaryAgents = agents.filter((a: any) => a.mode === "primary" && !a.builtIn);
+      // Filter to show only primary, non-internal agents
+      // Internal agents: title, compaction, summary, and other built-in subagents
+      const internalAgentNames = ["title", "compaction", "summary"];
+      const primaryAgents = agents.filter(
+        (a: any) =>
+          a.mode === "primary" && !a.builtIn && !internalAgentNames.includes(a.name.toLowerCase()),
+      );
 
       // Update global state
       // We cast to any here to satisfy the store's strict type requirement if needed

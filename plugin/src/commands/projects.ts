@@ -23,15 +23,32 @@ export function createProjectsCommandHandler({ client, logger, bot }: CommandDep
         return;
       }
 
+      const currentProjectResponse = await client.project.current();
+      const currentProject = currentProjectResponse.data;
+
       const message = projects
         .map((p, index) => {
           const name = p.worktree.split("/").pop() || p.worktree;
-          return `${index + 1}. *${name}*\n   \`${p.worktree}\``;
+          const isCurrent = p.worktree === currentProject?.worktree;
+          const marker = isCurrent ? "★ " : "";
+          return `${index + 1}. ${marker}*${name}*\n   \`${p.worktree}\``;
         })
         .join("\n\n");
 
+      const keyboard = {
+        inline_keyboard: projects.map((p) => [
+          {
+            text:
+              (p.worktree === currentProject?.worktree ? "★ " : "") +
+              (p.worktree.split("/").pop() || p.worktree),
+            callback_data: `project:${p.worktree}`,
+          },
+        ]),
+      };
+
       await bot.sendMessage(`*Projects (${projects.length})*:\n\n${message}`, {
         parse_mode: "Markdown",
+        reply_markup: keyboard,
       });
     } catch (error) {
       logger.error("Failed to list projects", { error: String(error) });

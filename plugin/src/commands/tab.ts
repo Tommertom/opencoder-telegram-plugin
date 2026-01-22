@@ -26,7 +26,15 @@ export function createTabCommandHandler(deps: CommandDeps) {
         const agentsResponse = await client.app.agents();
         if (agentsResponse.data) {
           const allAgents = agentsResponse.data as any[];
-          const primaryAgents = allAgents.filter((a: any) => a.mode === "primary" && !a.builtIn);
+          // Filter to show only primary, non-internal agents
+          // Internal agents: title, compaction, summary, and other built-in subagents
+          const internalAgentNames = ["title", "compaction", "summary"];
+          const primaryAgents = allAgents.filter(
+            (a: any) =>
+              a.mode === "primary" &&
+              !a.builtIn &&
+              !internalAgentNames.includes(a.name.toLowerCase()),
+          );
           globalStateStore.setAgents(primaryAgents);
           agents = primaryAgents;
         }
