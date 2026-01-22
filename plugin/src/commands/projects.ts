@@ -35,20 +35,8 @@ export function createProjectsCommandHandler({ client, logger, bot }: CommandDep
         })
         .join("\n\n");
 
-      const keyboard = {
-        inline_keyboard: projects.map((p) => [
-          {
-            text:
-              (p.worktree === currentProject?.worktree ? "★ " : "") +
-              (p.worktree.split("/").pop() || p.worktree),
-            callback_data: `project:${p.worktree}`,
-          },
-        ]),
-      };
-
       await bot.sendMessage(`*Projects (${projects.length})*:\n\n${message}`, {
         parse_mode: "Markdown",
-        reply_markup: keyboard,
       });
     } catch (error) {
       logger.error("Failed to list projects", { error: String(error) });

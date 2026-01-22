@@ -2,7 +2,6 @@ import { Bot, type Context, InputFile, Keyboard } from "grammy";
 import {
   createAgentsCallbackHandler,
   createModelsCallbackHandler,
-  createProjectsCallbackHandler,
   createSessionsCallbackHandler,
 } from "./callbacks/index.js";
 import {
@@ -117,7 +116,6 @@ export function createTelegramBot(
   // Register callback query handlers
   bot.callbackQuery(/^agent:/, createAgentsCallbackHandler(commandDeps));
   bot.callbackQuery(/^model:/, createModelsCallbackHandler(commandDeps));
-  bot.callbackQuery(/^project:/, createProjectsCallbackHandler(commandDeps));
   bot.callbackQuery(/^session:/, createSessionsCallbackHandler(commandDeps));
 
   bot.catch((error) => {
