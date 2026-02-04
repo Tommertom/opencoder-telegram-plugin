@@ -47,7 +47,18 @@ export function createTelegramBot(
       return;
     }
     if (ctx.chat?.id) {
+      const previousChatId = sessionTitleService.getActiveChatId();
+      const isNewChatId = previousChatId !== ctx.chat.id;
+
       sessionTitleService.setActiveChatId(ctx.chat.id);
+
+      // Notify user of their chat_id when first discovered
+      if (isNewChatId) {
+        console.log(`[Bot] New chat_id discovered: ${ctx.chat.id}`);
+        await ctx.reply(
+          `✅ Chat connected!\n\nYour chat_id: ${ctx.chat.id}\n\nThis chat is now active for OpenCode notifications.`
+        );
+      }
     }
     await next();
   });

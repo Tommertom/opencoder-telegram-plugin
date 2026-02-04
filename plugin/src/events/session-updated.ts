@@ -4,7 +4,6 @@ export async function handleSessionUpdated(
   event: any,
   context: EventHandlerContext,
 ): Promise<void> {
-  // Safely access the title from the nested property path
   const title = event?.properties?.info?.title;
   const sessionId = event?.properties?.info?.id ?? event?.properties?.id;
 
@@ -12,6 +11,5 @@ export async function handleSessionUpdated(
     if (typeof sessionId === "string" && sessionId.trim()) {
       context.sessionTitleService.setSessionTitle(sessionId, title);
     }
-    console.log(`[TelegramRemote] Session title updated: ${title}`);
   }
 }

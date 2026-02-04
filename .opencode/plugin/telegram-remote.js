@@ -31,7 +31,19 @@ function createTelegramBot(config, client, sessionTitleService) {
       return;
     }
     if (ctx.chat?.id) {
+      const previousChatId = sessionTitleService.getActiveChatId();
+      const isNewChatId = previousChatId !== ctx.chat.id;
       sessionTitleService.setActiveChatId(ctx.chat.id);
+      if (isNewChatId) {
+        console.log(`[Bot] New chat_id discovered: ${ctx.chat.id}`);
+        await ctx.reply(
+          `\u2705 Chat connected!
+
+Your chat_id: ${ctx.chat.id}
+
+This chat is now active for OpenCode notifications.`
+        );
+      }
     }
     await next();
   });
@@ -125,6 +137,7 @@ function loadConfig() {
   console.log("[Config] Loading environment configuration...");
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const allowedUserIdsStr = process.env.TELEGRAM_ALLOWED_USER_IDS;
+  const chatIdStr = process.env.TELEGRAM_CHAT_ID;
   if (!botToken || botToken.trim() === "") {
     console.error("[Config] Missing TELEGRAM_BOT_TOKEN");
     throw new Error("Missing required environment variable: TELEGRAM_BOT_TOKEN");
@@ -136,12 +149,23 @@ function loadConfig() {
       "Missing or invalid TELEGRAM_ALLOWED_USER_IDS (must be comma-separated numeric user IDs)"
     );
   }
+  let chatId;
+  if (chatIdStr && chatIdStr.trim() !== "") {
+    const parsed = Number.parseInt(chatIdStr.trim(), 10);
+    if (!Number.isNaN(parsed)) {
+      chatId = parsed;
+      console.log(`[Config] Chat ID configured: ${chatId}`);
+    } else {
+      console.warn(`[Config] Invalid TELEGRAM_CHAT_ID: ${chatIdStr}`);
+    }
+  }
   console.log(
     `[Config] Configuration loaded: allowedUsers=${allowedUserIds.length}`
   );
   return {
     botToken,
-    allowedUserIds
+    allowedUserIds,
+    chatId
   };
 }
 
@@ -149,13 +173,20 @@ function loadConfig() {
 async function handleSessionStatus(event, context) {
   const statusType = event?.properties?.status?.type;
   if (statusType) {
-    console.log(`[TelegramRemote] Session status updated: ${statusType}`);
     if (statusType === "idle") {
       console.log(`[TelegramRemote] Session is idle. Sending finished notification.`);
       try {
-        await context.bot.sendTemporaryMessage("Agent has finished.");
+        const sessionId = event?.properties?.info?.id ?? event?.properties?.id;
+        let message = "Agent has finished.";
+        if (sessionId && context.sessionTitleService) {
+          const title = context.sessionTitleService.getSessionTitle(sessionId);
+          if (title) {
+            message = `Agent has finished: ${title}`;
+          }
+        }
+        await context.bot.sendTemporaryMessage(message);
       } catch (error) {
-        console.error("[TelegramRemote] Failed to send idle notification:", error);
+        console.error("[TelegramRemote] Failed to send idle notification:");
       }
     }
   }
@@ -169,7 +200,6 @@ async function handleSessionUpdated(event, context) {
     if (typeof sessionId === "string" && sessionId.trim()) {
       context.sessionTitleService.setSessionTitle(sessionId, title);
     }
-    console.log(`[TelegramRemote] Session title updated: ${title}`);
   }
 }
 
@@ -224,6 +254,10 @@ var TelegramRemote = async ({ client }) => {
   }
   console.log("[TelegramRemote] Creating session title service...");
   const sessionTitleService = new SessionTitleService();
+  if (config.chatId) {
+    console.log(`[TelegramRemote] Setting active chat_id from config: ${config.chatId}`);
+    sessionTitleService.setActiveChatId(config.chatId);
+  }
   console.log("[TelegramRemote] Creating Telegram bot...");
   const bot = createTelegramBot(config, client, sessionTitleService);
   console.log("[TelegramRemote] Bot created successfully");
