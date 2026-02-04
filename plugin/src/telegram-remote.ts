@@ -28,6 +28,12 @@ export const TelegramRemote: Plugin = async ({ client }) => {
   console.log("[TelegramRemote] Creating session title service...");
   const sessionTitleService = new SessionTitleService();
 
+  // Set active chat_id from config if available
+  if (config.chatId) {
+    console.log(`[TelegramRemote] Setting active chat_id from config: ${config.chatId}`);
+    sessionTitleService.setActiveChatId(config.chatId);
+  }
+
   console.log("[TelegramRemote] Creating Telegram bot...");
 
   const bot = createTelegramBot(config, client, sessionTitleService);

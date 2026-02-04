@@ -8,6 +8,7 @@ export const SERVICE_NAME = "TelegramRemote";
 export interface Config {
   botToken: string;
   allowedUserIds: number[];
+  chatId?: number;
 }
 
 function parseAllowedUserIds(value: string | undefined): number[] {
@@ -26,6 +27,7 @@ export function loadConfig(): Config {
   console.log("[Config] Loading environment configuration...");
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const allowedUserIdsStr = process.env.TELEGRAM_ALLOWED_USER_IDS;
+  const chatIdStr = process.env.TELEGRAM_CHAT_ID;
 
   if (!botToken || botToken.trim() === "") {
     console.error("[Config] Missing TELEGRAM_BOT_TOKEN");
@@ -40,6 +42,18 @@ export function loadConfig(): Config {
     );
   }
 
+  // Parse optional chat_id
+  let chatId: number | undefined;
+  if (chatIdStr && chatIdStr.trim() !== "") {
+    const parsed = Number.parseInt(chatIdStr.trim(), 10);
+    if (!Number.isNaN(parsed)) {
+      chatId = parsed;
+      console.log(`[Config] Chat ID configured: ${chatId}`);
+    } else {
+      console.warn(`[Config] Invalid TELEGRAM_CHAT_ID: ${chatIdStr}`);
+    }
+  }
+
   console.log(
     `[Config] Configuration loaded: allowedUsers=${allowedUserIds.length}`,
   );
@@ -47,5 +61,6 @@ export function loadConfig(): Config {
   return {
     botToken,
     allowedUserIds,
+    chatId,
   };
 }
