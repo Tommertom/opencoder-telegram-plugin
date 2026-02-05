@@ -1,23 +1,21 @@
-# OpenCoder Telegram Remote Plugin
+# OpenCode Telegram Notification Plugin
 
-Control OpenCode sessions remotely via Telegram in a single chat.
+Get OpenCode notifications via Telegram.
 
 > **Disclaimer:** This project is not affiliated with, endorsed by, or sponsored by OpenCode, SST, or any of their affiliates. OpenCode is a trademark of SST.
 
 ## Features
 
+- 🔔 **Task Completion Notifications**: Get notified when OpenCode agent finishes tasks
+- ❓ **Question Alerts**: Receive notifications when OpenCode asks questions
 - 🔐 **Secure**: Whitelist-based user access control
-- 💬 **Single chat interface**: All interactions in one Telegram chat
-- 🤖 **Remote control**: Send prompts and receive responses via Telegram
-- 🔄 **Auto-session management**: Automatically creates and manages sessions
-- ⚡ **Real-time feedback**: Assistant responses streamed back to chat
+- 💬 **Simple Setup**: Automatic chat discovery and configuration
 
 ## Requirements
 
 - Node.js 18+
 - OpenCode CLI installed
 - Telegram Bot (from [@BotFather](https://t.me/BotFather))
-- Direct private chat with your bot
 
 ## Installation
 
@@ -43,8 +41,8 @@ Control OpenCode sessions remotely via Telegram in a single chat.
 Clone and build:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/opencoder-telegram-remote-plugin.git
-cd opencoder-telegram-remote-plugin/plugin
+git clone https://github.com/YOUR_USERNAME/opencoder-telegram-plugin.git
+cd opencoder-telegram-plugin/plugin
 npm install
 npm run build
 ```
@@ -54,6 +52,8 @@ Create `.env` file in the plugin directory:
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
+# Optional: Pre-configure your chat_id (or let the bot discover it automatically)
+# TELEGRAM_CHAT_ID=your_chat_id_here
 ```
 
 ### 5. Install in OpenCode
@@ -64,8 +64,8 @@ Add to your `~/.config/opencode/opencode.json`:
 {
   "plugins": [
     {
-      "name": "telegram-remote",
-      "path": "/path/to/opencoder-telegram-remote-plugin/plugin/dist/telegram-remote.js"
+      "name": "telegram-notification",
+      "path": "/path/to/opencoder-telegram-plugin/plugin/dist/telegram-remote.js"
     }
   ]
 }
@@ -83,7 +83,7 @@ Then reference it:
 {
   "plugins": [
     {
-      "name": "telegram-remote",
+      "name": "telegram-notification",
       "path": "~/.config/opencode/plugin/telegram-remote.js"
     }
   ]
@@ -92,56 +92,39 @@ Then reference it:
 
 ## Usage
 
-### Creating a Session
+### Initial Setup
 
-Send `/new` command in the chat. The bot will:
-- Create a new OpenCode session
-- Set it as the active session
-- Post confirmation in the chat
+1. Start OpenCode with the plugin enabled
+2. Open your Telegram bot and send any message (e.g., "Hello")
+3. The bot will reply with your chat_id and confirm the connection
+4. You're ready to receive notifications!
 
-### Sending Prompts
+### Receiving Notifications
 
-1. Type your prompt and send it in the chat
-2. The bot forwards it to the active OpenCode session
-3. Assistant responses appear in the same chat
+The plugin automatically sends notifications to your Telegram chat when:
 
-### Auto-Session Creation
+- **Agent finishes**: When OpenCode completes a task, you'll receive a message like:
+  ```
+  Agent has finished: [Session Title]
+  ```
 
-Send any message without using `/new` first:
-- Bot automatically creates a session
-- Sets it as the active session
-- All subsequent messages go to this session
+- **Questions asked**: When OpenCode needs clarification, you'll receive:
+  ```
+  📋 [Session Title]
+  
+  ❓ Questions:
+  1. [Question text]
+  ```
 
-### Switching Sessions
+### Optional: Pre-configure Chat ID
 
-To switch to a different session:
-- Use `/new` to create and switch to a new session
-- The new session becomes the active session
+If you prefer, add your chat_id to the `.env` file to skip the initial setup:
 
-## Architecture
-
+```bash
+TELEGRAM_CHAT_ID=your_chat_id_here
 ```
-Telegram Chat  ←→  Active OpenCode Session
-```
 
-- **One active session** at a time
-- Use `/new` to create and switch sessions
-- Previous session remains in OpenCode but becomes inactive
-- Sessions persist in memory only
-
-## Session Title Management
-
-The plugin uses a `SessionTitleService` to manage session titles and active chat information in memory. This service maintains:
-
-- **Session Titles**: Maps session IDs to their human-readable titles
-- **Active Chat ID**: Tracks the currently active Telegram chat ID for sending messages
-
-This lightweight service coordinates between the Telegram bot interface and the OpenCode session management.
-
-## Commands
-
-- `/new` - Create a new session and set it as active
-- `/help` - Show help message
+You can get your chat_id by messaging the bot once, or using [@userinfobot](https://t.me/userinfobot).
 
 ## Security
 
@@ -158,14 +141,6 @@ This lightweight service coordinates between the Telegram bot interface and the 
 3. Only add trusted users to whitelist
 4. Review `.env` file permissions (should be readable only by you)
 
-### What's NOT Supported
-
-- ❌ Public chats
-- ❌ Webhooks (uses long polling)
-- ❌ Persistent sessions (memory only)
-- ❌ Multiple concurrent sessions (one active session at a time)
-- ❌ Inline keyboards or buttons
-
 ## Configuration Reference
 
 ### Environment Variables
@@ -174,6 +149,7 @@ This lightweight service coordinates between the Telegram bot interface and the 
 |----------|----------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from @BotFather | `123456:ABC-DEF...` |
 | `TELEGRAM_ALLOWED_USER_IDS` | ✅ | Comma-separated user IDs | `123456789,987654321` |
+| `TELEGRAM_CHAT_ID` | ❌ | Optional pre-configured chat ID | `123456789` |
 
 ### OpenCode Plugin Configuration
 
@@ -181,7 +157,7 @@ This lightweight service coordinates between the Telegram bot interface and the 
 {
   "plugins": [
     {
-      "name": "telegram-remote",
+      "name": "telegram-notification",
       "path": "/absolute/path/to/telegram-remote.js"
     }
   ]
@@ -190,23 +166,24 @@ This lightweight service coordinates between the Telegram bot interface and the 
 
 ## Troubleshooting
 
-### Bot doesn't respond
+### Bot doesn't send notifications
 
-- Verify bot token is correct
-- Confirm your user ID is in whitelist
-- Ensure you've started a private chat with the bot
+- Verify bot token is correct in `.env`
+- Confirm your user ID is in the whitelist
+- Ensure you've established a chat (send any message to the bot first)
 - Check OpenCode logs for errors
 
-### Session not found
+### Chat not connecting
 
-- Sessions are memory-only
-- Restarting OpenCode clears all sessions
-- Use `/new` to create a session if none exists
+- Make sure you're using a **private** chat (not a group)
+- Send any message to the bot to trigger chat discovery
+- If using `TELEGRAM_CHAT_ID` in `.env`, verify the ID is correct
 
 ### Permission denied
 
 - Your user ID must be in `TELEGRAM_ALLOWED_USER_IDS`
 - Check you copied the correct numeric ID (not username)
+- Use [@userinfobot](https://t.me/userinfobot) to verify your user ID
 
 ## Development
 
@@ -215,16 +192,18 @@ This lightweight service coordinates between the Telegram bot interface and the 
 ```
 plugin/
 ├── src/
-│   ├── telegram-remote.ts    # Main plugin entry
-│   ├── bot.ts                # Grammy bot setup
-│   ├── config.ts             # Environment config loader
-│   ├── session-store.ts      # Active session tracking
-│   ├── message-tracker.ts    # Track message roles
-│   └── lib/
-│       ├── logger.ts         # OpenCode logging
-│       ├── types.ts          # TypeScript types
-│       └── config.ts         # Service constants
-├── dist/                     # Built output
+│   ├── telegram-remote.ts       # Main plugin entry
+│   ├── bot.ts                   # Grammy bot setup
+│   ├── config.ts                # Environment config
+│   ├── events/                  # Event handlers
+│   │   ├── session-status.ts    # Handles idle/active status
+│   │   ├── session-updated.ts   # Tracks session titles
+│   │   ├── question-asked.ts    # Forwards questions
+│   │   ├── types.ts             # TypeScript types
+│   │   └── index.ts
+│   └── services/
+│       └── session-title-service.ts  # Session title storage
+├── dist/                        # Built output
 ├── package.json
 ├── tsconfig.json
 └── tsup.config.ts
@@ -244,7 +223,8 @@ npm run typecheck  # Type checking only
 1. Build the plugin
 2. Configure `.env` with test bot credentials
 3. Point OpenCode to the built file
-4. Start OpenCode and verify bot connects
+4. Start OpenCode and message the bot to establish connection
+5. Trigger OpenCode tasks to test notifications
 
 ## Contributing
 
@@ -259,10 +239,3 @@ Contributions welcome! Please:
 ## License
 
 MIT
-
-## Credits
-
-Forked from [opencode-telegram-notification-plugin](https://github.com/Davasny/opencode-telegram-notification-plugin)
-
-Extended with remote control functionality using Grammy.
-# opencoder-telegram-plugin
