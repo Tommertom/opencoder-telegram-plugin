@@ -111,8 +111,13 @@ function createBotManager(bot, sessionTitleService) {
 }
 
 // src/config.ts
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { config as loadEnv } from "dotenv";
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = dirname(__filename);
+loadEnv({ path: resolve(__dirname, "..", "..", ".env") });
+loadEnv({ path: resolve(__dirname, "..", ".env") });
 loadEnv({ path: resolve(process.cwd(), ".env") });
 function parseAllowedUserIds(value) {
   if (!value || value.trim() === "") {
@@ -161,23 +166,14 @@ async function handleSessionStatus(event, context) {
   const statusType = event?.properties?.status?.type;
   if (statusType) {
     if (statusType === "idle") {
-      console.log(`[TelegramRemote] Session is idle. Sending finished notification.`);
       try {
         const sessionId = event?.properties?.info?.id ?? event?.properties?.sessionID ?? event?.properties?.id;
-        console.log("[TelegramRemote] Extracted sessionId for idle event:", sessionId);
-        console.log("[TelegramRemote] Event structure:", JSON.stringify(event?.properties, null, 2));
         let message = "Agent has finished.";
         if (sessionId && context.sessionTitleService) {
           const title = context.sessionTitleService.getSessionTitle(sessionId);
-          console.log("[TelegramRemote] Retrieved title from service:", title);
           if (title) {
             message = `Agent has finished: ${title}`;
           }
-        } else {
-          console.log("[TelegramRemote] SessionId or sessionTitleService missing:", {
-            hasSessionId: !!sessionId,
-            hasService: !!context.sessionTitleService
-          });
         }
         await context.bot.sendMessage(message);
       } catch (error) {
@@ -200,7 +196,6 @@ async function handleSessionUpdated(event, context) {
 
 // src/events/question-asked.ts
 async function handleQuestionAsked(event, context) {
-  console.log("[TelegramRemote] handleQuestionAsked called with event:", JSON.stringify(event, null, 2));
   const sessionID = event?.properties?.sessionID;
   const questions = event?.properties?.questions;
   if (sessionID && questions && Array.isArray(questions) && questions.length > 0 && context.bot) {
@@ -214,7 +209,6 @@ async function handleQuestionAsked(event, context) {
 
 \u2753 Questions:
 ${questionTexts}`;
-    console.log(`[TelegramRemote] Sending questions for session ${sessionID}`);
     try {
       await context.bot.sendMessage(message);
     } catch (error) {

@@ -1,6 +1,12 @@
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+loadEnv({ path: resolve(__dirname, "..", "..", ".env") });
+loadEnv({ path: resolve(__dirname, "..", ".env") });
 loadEnv({ path: resolve(process.cwd(), ".env") });
 
 export const SERVICE_NAME = "TelegramRemote";
